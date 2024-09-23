@@ -25,10 +25,8 @@ const XMLParser = () => {
     const extractedData = Array.from(memberDataElements)
       .map(member => ({
         type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
-        name: member.getElementsByTagName("NAME")[0]?.textContent || '',
         description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
         length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
-        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
       }))
       .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
 
@@ -59,13 +57,7 @@ const XMLParser = () => {
     return Object.values(grouped).sort((a, b) => {
       const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
       const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
-      if (typeOrderA !== -1 && typeOrderB !== -1) {
-        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
-      } else if (typeOrderA !== -1) {
-        return -1;
-      } else if (typeOrderB !== -1) {
-        return 1;
-      }
+      if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
       if (a.type !== b.type) return a.type.localeCompare(b.type);
       return b.length - a.length;
     });
@@ -245,7 +237,121 @@ const XMLParser = () => {
         Process Files
       </button>
       
-      {/* ... (keep the rest of the JSX for displaying data) */}
+      {/* Summary Display */}
+      {Object.keys(summary).length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-xl font-bold mb-2">Summary</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-lg font-semibold mb-2">Studs</h4>
+              <ul>
+                {Object.entries(summary.studs).map(([length, count]) => (
+                  <li key={length}>{length}: {count}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold mb-2">King Studs</h4>
+              <ul>
+                {Object.entries(summary.kingStuds).map(([length, count]) => (
+                  <li key={length}>{length}: {count}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div className="mt-4">
+            <p>Total Headers (3-3-0): {summary.totalHeaders330}</p>
+            <p>Total Jacks (6-9-6): {summary.totalJacks696}</p>
+          </div>
+        </div>
+      )}
+      
+      {/* Parsed XML Data Display */}
+      {Object.keys(parsedData).length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-xl font-bold mb-2">Parsed XML Data</h3>
+          {Object.entries(parsedData).map(([jobNumber, jobData]) => (
+            <div key={jobNumber} className="mb-4">
+              <h4 className="text-lg font-semibold mb-2">Job Number: {jobNumber}</h4>
+              {Object.entries(jobData).map(([fileName, fileData]) => (
+                <div key={fileName} className="mb-2">
+                  <h5 className="text-md font-semibold mb-1">File: {fileName}</h5>
+                  <table className="w-full border-collapse border border-gray-300">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border border-gray-300 p-2">Type</th>
+                        <th className="border border-gray-300 p-2">Length</th>
+                        <th className="border border-gray-300 p-2">Count</th>
+                        <th className="border border-gray-300 p-2">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fileData.map((item, index) => (
+                        <tr key={index}>
+                          <td className="border border-gray-300 p-2">{item.type}</td>
+                          <td className="border border-gray-300 p-2">{item.convertedLength}</td>
+                          <td className="border border-gray-300 p-2">{item.count}</td>
+                          <td className="border border-gray-300 p-2">{item.description}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* Mesa 2 Data Display */}
+      {mesa2Data.length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-xl font-bold mb-2">Mesa 2 Data</h3>
+          <table className="w-full border-collapse border border-gray-300">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border border-gray-300 p-2">Job Number</th>
+                <th className="border border-gray-300 p-2">Bundle</th>
+                <th className="border border-gray-300 p-2">LF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mesa2Data.map((item, index) => (
+                <tr key={index}>
+                  <td className="border border-gray-300 p-2">{item.jobNumber}</td>
+                  <td className="border border-gray-300 p-2">{item.bundle}</td>
+                  <td className="border border-gray-300 p-2">{item.LF}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      
+      {/* Mesa 3 Data Display */}
+      {mesa3Data.length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-xl font-bold mb-2">Mesa 3 Data</h3>
+          <table className="w-full border-collapse border border-gray-300">
+            <thead>
+            <tr className="bg-gray-100">
+                <th className="border border-gray-300 p-2">Job Number</th>
+                <th className="border border-gray-300 p-2">Bundle</th>
+                <th className="border border-gray-300 p-2">LF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mesa3Data.map((item, index) => (
+                <tr key={index}>
+                  <td className="border border-gray-300 p-2">{item.jobNumber}</td>
+                  <td className="border border-gray-300 p-2">{item.bundle}</td>
+                  <td className="border border-gray-300 p-2">{item.LF}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
