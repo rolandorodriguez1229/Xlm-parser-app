@@ -83,7 +83,6 @@ const XMLParser = () => {
       const content = await file.text();
       const pathParts = file.webkitRelativePath.split('/');
       const jobNumber = pathParts[pathParts.length - 2];
-      const fileName = pathParts[pathParts.length - 1];
       const fileData = parseXML(content);
 
       if (!xmlData[jobNumber]) {
