@@ -1,4 +1,4 @@
-iimport React, { useState } from 'react';
+import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 
 const XMLParser = () => {
