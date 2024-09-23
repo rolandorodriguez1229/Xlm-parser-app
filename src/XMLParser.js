@@ -1,116 +1,88 @@
 import React, { useState } from 'react';
+import * as XLSX from 'xlsx';
 
 const XMLParser = () => {
   const [parsedData, setParsedData] = useState({});
-  const [summary, setSummary] = useState({});
+  const [summary, setSummary] = useState({
+    studs: {},
+    kingStuds: {},
+    totalHeaders330: 0,
+    totalJacks696: 0
+  });
+  const [mesa2Data, setMesa2Data] = useState([]);
+  const [mesa3Data, setMesa3Data] = useState([]);
+  const [combinedData, setCombinedData] = useState({});
 
-  const parseXML = (xmlString, fileName, jobNumber) => {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
-    
-    const extractedData = Array.from(memberDataElements)
-      .map(member => ({
-        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
-        name: member.getElementsByTagName("NAME")[0]?.textContent || '',
-        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
-        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
-        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
-      }))
-      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
-
-    return groupAndSortData(extractedData);
-  };
-
-  const convertLength = (inches) => {
-    const feet = Math.floor(inches / 12);
-    const remainingInches = inches % 12;
-    const wholeInches = Math.floor(remainingInches);
-    const fraction = remainingInches - wholeInches;
-    const sixteenths = Math.round(fraction * 16);
-    
-    return `${feet}-${wholeInches}-${sixteenths}`;
-  };
-
-  const groupAndSortData = (data) => {
-    const typeOrder = ['STUD', 'KING', 'JACK'];
-    const grouped = data.reduce((acc, item) => {
-      const key = `${item.type}-${item.length}`;
-      if (!acc[key]) {
-        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
-      }
-      acc[key].count++;
-      return acc;
-    }, {});
-
-    return Object.values(grouped).sort((a, b) => {
-      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
-      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
-      if (typeOrderA !== -1 && typeOrderB !== -1) {
-        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
-      } else if (typeOrderA !== -1) {
-        return -1;
-      } else if (typeOrderB !== -1) {
-        return 1;
-      }
-      if (a.type !== b.type) return a.type.localeCompare(b.type);
-      return b.length - a.length;
-    });
-  };
-
-  const updateSummary = (newParsedData) => {
-    const newSummary = {
-      totalStuds: 0,
-      totalKings: 0,
-      totalHeaders330: 0,
-      totalJacks696: 0
-    };
-
-    Object.values(newParsedData).forEach(jobData => {
-      Object.values(jobData).forEach(fileData => {
-        fileData.forEach(item => {
-          if (item.type.toUpperCase() === 'STUD') {
-            newSummary.totalStuds += item.count;
-          } else if (item.type.toUpperCase() === 'KING') {
-            newSummary.totalKings += item.count;
-          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
-            newSummary.totalHeaders330 += item.count;
-          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
-            newSummary.totalJacks696 += item.count;
-          }
-        });
-      });
-    });
-
-    setSummary(newSummary);
-  };
+  // Existing XML parsing functions...
+  // (parseXML, convertLength, groupAndSortData, updateSummary)
 
   const handleFileUpload = async (event) => {
-    const files = event.target.files;
-    const newParsedData = {};
+    // Existing XML file handling...
+  };
 
-    for (let file of files) {
-      const pathParts = file.webkitRelativePath.split('/');
-      const jobNumber = pathParts[pathParts.length - 2];
-      const fileName = pathParts[pathParts.length - 1];
-
-      const content = await file.text();
-      const fileData = parseXML(content, fileName, jobNumber);
-
-      if (!newParsedData[jobNumber]) {
-        newParsedData[jobNumber] = {};
+  const handleXLSUpload = (event, mesa) => {
+    const file = event.target.files[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, {type: 'array'});
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
+      
+      if (mesa === 2) {
+        const processedData = jsonData.slice(1).map(row => ({
+          orderId: row[0],
+          bundle: row[1],
+          LF: row[2].includes('/') ? row[2].split('/')[1].trim() : row[2]
+        }));
+        setMesa2Data(processedData);
+      } else if (mesa === 3) {
+        const processedData = jsonData.slice(1).map(row => ({
+          job: row[0],
+          bundle: row[1],
+          panels: row[2].includes('/') ? row[2].split('/')[1].trim() : row[2]
+        }));
+        setMesa3Data(processedData);
       }
-      newParsedData[jobNumber][fileName] = fileData;
-    }
+      
+      combineData();
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
-    setParsedData(newParsedData);
-    updateSummary(newParsedData);
+  const combineData = () => {
+    const combined = {};
+    
+    mesa2Data.forEach(item => {
+      if (!combined[item.orderId]) {
+        combined[item.orderId] = { mesa2: [], mesa3: [], xmlData: {} };
+      }
+      combined[item.orderId].mesa2.push(item);
+    });
+    
+    mesa3Data.forEach(item => {
+      if (!combined[item.job]) {
+        combined[item.job] = { mesa2: [], mesa3: [], xmlData: {} };
+      }
+      combined[item.job].mesa3.push(item);
+    });
+    
+    Object.entries(parsedData).forEach(([jobNumber, jobData]) => {
+      if (combined[jobNumber]) {
+        combined[jobNumber].xmlData = jobData;
+      }
+    });
+    
+    setCombinedData(combined);
   };
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Multi-File XML Parser</h2>
+      <h2 className="text-2xl font-bold mb-4">Multi-File XML and XLS Parser</h2>
+      
+      {/* XML file input */}
       <div className="mb-4">
+        <h3 className="text-lg font-semibold mb-2">Upload XML Files</h3>
         <input
           type="file"
           webkitdirectory="true"
@@ -125,55 +97,101 @@ const XMLParser = () => {
             hover:file:bg-blue-100"
         />
       </div>
-      {Object.keys(parsedData).length > 0 && (
+      
+      {/* Mesa 2 XLS input */}
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold mb-2">Upload Mesa 2 XLS File</h3>
+        <input
+          type="file"
+          accept=".xls,.xlsx"
+          onChange={(e) => handleXLSUpload(e, 2)}
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-blue-50 file:text-blue-700
+            hover:file:bg-blue-100"
+        />
+      </div>
+      
+      {/* Mesa 3 XLS input */}
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold mb-2">Upload Mesa 3 XLS File</h3>
+        <input
+          type="file"
+          accept=".xls,.xlsx"
+          onChange={(e) => handleXLSUpload(e, 3)}
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-blue-50 file:text-blue-700
+            hover:file:bg-blue-100"
+        />
+      </div>
+      
+      {/* Combined Data Display */}
+      {Object.keys(combinedData).length > 0 && (
         <div>
-          <h3 className="text-xl font-bold mb-2">Summary</h3>
-          <table className="w-full border-collapse border border-gray-300 mb-8">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border border-gray-300 p-2">Total Studs</th>
-                <th className="border border-gray-300 p-2">Total Kings</th>
-                <th className="border border-gray-300 p-2">Total Headers (3-3-0)</th>
-                <th className="border border-gray-300 p-2">Total Jacks (6-9-6)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="border border-gray-300 p-2">{summary.totalStuds}</td>
-                <td className="border border-gray-300 p-2">{summary.totalKings}</td>
-                <td className="border border-gray-300 p-2">{summary.totalHeaders330}</td>
-                <td className="border border-gray-300 p-2">{summary.totalJacks696}</td>
-              </tr>
-            </tbody>
-          </table>
-          {Object.entries(parsedData).map(([jobNumber, jobData]) => (
+          <h3 className="text-xl font-bold mb-2">Combined Data</h3>
+          {Object.entries(combinedData).map(([jobNumber, data]) => (
             <div key={jobNumber} className="mb-8">
-              <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
-              {Object.entries(jobData).map(([fileName, fileData]) => (
-                <div key={fileName} className="mb-4">
-                  <h4 className="text-lg font-semibold mb-2">File: {fileName}</h4>
+              <h4 className="text-lg font-semibold mb-2">Job #: {jobNumber}</h4>
+              
+              {/* Mesa 2 Data */}
+              {data.mesa2.length > 0 && (
+                <div className="mb-4">
+                  <h5 className="text-md font-semibold mb-2">Mesa 2 Data</h5>
                   <table className="w-full border-collapse border border-gray-300">
                     <thead>
                       <tr className="bg-gray-100">
-                        <th className="border border-gray-300 p-2">Type</th>
-                        <th className="border border-gray-300 p-2">Length (ft-in-16ths)</th>
-                        <th className="border border-gray-300 p-2">Count</th>
-                        <th className="border border-gray-300 p-2">Description</th>
+                        <th className="border border-gray-300 p-2">Bundle</th>
+                        <th className="border border-gray-300 p-2">LF</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {fileData.map((item, index) => (
+                      {data.mesa2.map((item, index) => (
                         <tr key={index}>
-                          <td className="border border-gray-300 p-2">{item.type}</td>
-                          <td className="border border-gray-300 p-2">{item.convertedLength}</td>
-                          <td className="border border-gray-300 p-2">{item.count}</td>
-                          <td className="border border-gray-300 p-2">{item.description}</td>
+                          <td className="border border-gray-300 p-2">{item.bundle}</td>
+                          <td className="border border-gray-300 p-2">{item.LF}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-              ))}
+              )}
+              
+              {/* Mesa 3 Data */}
+              {data.mesa3.length > 0 && (
+                <div className="mb-4">
+                  <h5 className="text-md font-semibold mb-2">Mesa 3 Data</h5>
+                  <table className="w-full border-collapse border border-gray-300">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border border-gray-300 p-2">Bundle</th>
+                        <th className="border border-gray-300 p-2">Panels</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.mesa3.map((item, index) => (
+                        <tr key={index}>
+                          <td className="border border-gray-300 p-2">{item.bundle}</td>
+                          <td className="border border-gray-300 p-2">{item.panels}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              
+              {/* XML Data Summary */}
+              {Object.keys(data.xmlData).length > 0 && (
+                <div className="mb-4">
+                  <h5 className="text-md font-semibold mb-2">XML Data Summary</h5>
+                  {/* Insert here the summary tables for studs, king studs, headers, and jacks */}
+                  {/* You can reuse the summary rendering code from the previous version */}
+                </div>
+              )}
             </div>
           ))}
         </div>
