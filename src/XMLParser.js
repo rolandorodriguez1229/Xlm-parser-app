@@ -1,7 +1,4 @@
 import React, { useState } from 'react';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const XMLParser = () => {
   const [parsedData, setParsedData] = useState([]);
@@ -32,47 +29,44 @@ const XMLParser = () => {
   };
 
   return (
-    <Card className="w-full max-w-4xl mx-auto">
-      <CardHeader>
-        <h2 className="text-2xl font-bold">XML Parser</h2>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-4">
-          <input
-            type="file"
-            accept=".xml"
-            onChange={handleFileUpload}
-            className="hidden"
-            id="file-upload"
-          />
-          <label htmlFor="file-upload">
-            <Button as="span">Cargar archivo XML</Button>
-          </label>
-        </div>
-        {parsedData.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Type</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Length</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {parsedData.map((item, index) => (
-                <TableRow key={index}>
-                  <TableCell>{item.type}</TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.description}</TableCell>
-                  <TableCell>{`${item.length} ${item.units}`}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+    <div className="w-full max-w-4xl mx-auto p-4">
+      <h2 className="text-2xl font-bold mb-4">XML Parser</h2>
+      <div className="mb-4">
+        <input
+          type="file"
+          accept=".xml"
+          onChange={handleFileUpload}
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-blue-50 file:text-blue-700
+            hover:file:bg-blue-100"
+        />
+      </div>
+      {parsedData.length > 0 && (
+        <table className="w-full border-collapse border border-gray-300">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border border-gray-300 p-2">Type</th>
+              <th className="border border-gray-300 p-2">Name</th>
+              <th className="border border-gray-300 p-2">Description</th>
+              <th className="border border-gray-300 p-2">Length</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parsedData.map((item, index) => (
+              <tr key={index}>
+                <td className="border border-gray-300 p-2">{item.type}</td>
+                <td className="border border-gray-300 p-2">{item.name}</td>
+                <td className="border border-gray-300 p-2">{item.description}</td>
+                <td className="border border-gray-300 p-2">{`${item.length} ${item.units}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 };
 
