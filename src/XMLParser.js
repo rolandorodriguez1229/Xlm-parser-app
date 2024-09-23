@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 const XMLParser = () => {
   const [parsedData, setParsedData] = useState({});
+  const [summary, setSummary] = useState({});
 
   const parseXML = (xmlString, fileName, jobNumber) => {
     const parser = new DOMParser();
@@ -57,6 +58,33 @@ const XMLParser = () => {
     });
   };
 
+  const updateSummary = (newParsedData) => {
+    const newSummary = {
+      totalStuds: 0,
+      totalKings: 0,
+      totalHeaders330: 0,
+      totalJacks696: 0
+    };
+
+    Object.values(newParsedData).forEach(jobData => {
+      Object.values(jobData).forEach(fileData => {
+        fileData.forEach(item => {
+          if (item.type.toUpperCase() === 'STUD') {
+            newSummary.totalStuds += item.count;
+          } else if (item.type.toUpperCase() === 'KING') {
+            newSummary.totalKings += item.count;
+          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
+            newSummary.totalHeaders330 += item.count;
+          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
+            newSummary.totalJacks696 += item.count;
+          }
+        });
+      });
+    });
+
+    setSummary(newSummary);
+  };
+
   const handleFileUpload = async (event) => {
     const files = event.target.files;
     const newParsedData = {};
@@ -76,6 +104,7 @@ const XMLParser = () => {
     }
 
     setParsedData(newParsedData);
+    updateSummary(newParsedData);
   };
 
   return (
@@ -98,6 +127,25 @@ const XMLParser = () => {
       </div>
       {Object.keys(parsedData).length > 0 && (
         <div>
+          <h3 className="text-xl font-bold mb-2">Summary</h3>
+          <table className="w-full border-collapse border border-gray-300 mb-8">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border border-gray-300 p-2">Total Studs</th>
+                <th className="border border-gray-300 p-2">Total Kings</th>
+                <th className="border border-gray-300 p-2">Total Headers (3-3-0)</th>
+                <th className="border border-gray-300 p-2">Total Jacks (6-9-6)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-gray-300 p-2">{summary.totalStuds}</td>
+                <td className="border border-gray-300 p-2">{summary.totalKings}</td>
+                <td className="border border-gray-300 p-2">{summary.totalHeaders330}</td>
+                <td className="border border-gray-300 p-2">{summary.totalJacks696}</td>
+              </tr>
+            </tbody>
+          </table>
           {Object.entries(parsedData).map(([jobNumber, jobData]) => (
             <div key={jobNumber} className="mb-8">
               <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
