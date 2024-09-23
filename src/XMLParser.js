@@ -14,19 +14,90 @@ const XMLParser = () => {
   const [validJobNumbers, setValidJobNumbers] = useState(new Set());
 
   const parseXML = (xmlString) => {
-    // ... (el resto del código parseXML permanece igual)
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
+    
+    const extractedData = Array.from(memberDataElements)
+      .map(member => ({
+        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
+        name: member.getElementsByTagName("NAME")[0]?.textContent || '',
+        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
+        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
+        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
+      }))
+      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
+
+    return groupAndSortData(extractedData);
   };
 
   const convertLength = (inches) => {
-    // ... (el resto del código convertLength permanece igual)
+    const feet = Math.floor(inches / 12);
+    const remainingInches = inches % 12;
+    const wholeInches = Math.floor(remainingInches);
+    const fraction = remainingInches - wholeInches;
+    const sixteenths = Math.round(fraction * 16);
+    
+    return `${feet}-${wholeInches}-${sixteenths}`;
   };
 
   const groupAndSortData = (data) => {
-    // ... (el resto del código groupAndSortData permanece igual)
+    const typeOrder = ['STUD', 'KING STUD', 'JACK'];
+    const grouped = data.reduce((acc, item) => {
+      const key = `${item.type}-${item.length}`;
+      if (!acc[key]) {
+        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
+      }
+      acc[key].count++;
+      return acc;
+    }, {});
+
+    return Object.values(grouped).sort((a, b) => {
+      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
+      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
+      if (typeOrderA !== -1 && typeOrderB !== -1) {
+        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
+      } else if (typeOrderA !== -1) {
+        return -1;
+      } else if (typeOrderB !== -1) {
+        return 1;
+      }
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return b.length - a.length;
+    });
   };
 
   const updateSummary = (newParsedData) => {
-    // ... (el resto del código updateSummary permanece igual)
+    const newSummary = {
+      studs: {},
+      kingStuds: {},
+      totalHeaders330: 0,
+      totalJacks696: 0
+    };
+
+    Object.values(newParsedData).forEach(jobData => {
+      Object.values(jobData).forEach(fileData => {
+        fileData.forEach(item => {
+          if (item.type.toUpperCase() === 'STUD') {
+            if (!newSummary.studs[item.convertedLength]) {
+              newSummary.studs[item.convertedLength] = 0;
+            }
+            newSummary.studs[item.convertedLength] += item.count;
+          } else if (item.type.toUpperCase() === 'KING STUD') {
+            if (!newSummary.kingStuds[item.convertedLength]) {
+              newSummary.kingStuds[item.convertedLength] = 0;
+            }
+            newSummary.kingStuds[item.convertedLength] += item.count;
+          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
+            newSummary.totalHeaders330 += item.count;
+          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
+            newSummary.totalJacks696 += item.count;
+          }
+        });
+      });
+    });
+
+    setSummary(newSummary);
   };
 
   const handleXMLUpload = async (event) => {
@@ -37,7 +108,6 @@ const XMLParser = () => {
       const pathParts = file.webkitRelativePath.split('/');
       const jobNumber = pathParts[pathParts.length - 2];
       
-      // Solo procesar si el número de trabajo está en el conjunto de números de trabajo válidos
       if (validJobNumbers.has(jobNumber)) {
         const fileName = pathParts[pathParts.length - 1];
         const content = await file.text();
@@ -65,18 +135,18 @@ const XMLParser = () => {
       
       if (mesa === 2) {
         const processedData = jsonData.slice(1).map(row => ({
-          jobNumber: row[2], // Columna C
-          bundle: row[3],    // Columna D
-          LF: row[4]         // Columna E
-        })).filter(item => item.jobNumber); // Filtrar filas vacías
+          jobNumber: row[2],
+          bundle: row[3],
+          LF: row[4]
+        })).filter(item => item.jobNumber);
         setMesa2Data(processedData);
         updateValidJobNumbers(processedData.map(item => item.jobNumber));
       } else if (mesa === 3) {
         const processedData = jsonData.slice(1).map(row => ({
-          jobNumber: row[1], // Columna B
-          bundle: row[2],    // Columna C
-          LF: row[4]         // Columna E
-        })).filter(item => item.jobNumber); // Filtrar filas vacías
+          jobNumber: row[1],
+          bundle: row[2],
+          LF: row[4]
+        })).filter(item => item.jobNumber);
         setMesa3Data(processedData);
         updateValidJobNumbers(processedData.map(item => item.jobNumber));
       }
@@ -96,7 +166,7 @@ const XMLParser = () => {
     <div className="w-full max-w-6xl mx-auto p-4">
       <h2 className="text-2xl font-bold mb-4">Multi-File XML and XLS Parser</h2>
       
-      {/* XML file input */}
+      {/* Input fields */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold mb-2">Upload XML Files</h3>
         <input
@@ -114,7 +184,6 @@ const XMLParser = () => {
         />
       </div>
       
-      {/* Mesa 2 XLS input */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold mb-2">Upload Mesa 2 XLS File</h3>
         <input
@@ -130,7 +199,6 @@ const XMLParser = () => {
         />
       </div>
       
-      {/* Mesa 3 XLS input */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold mb-2">Upload Mesa 3 XLS File</h3>
         <input
@@ -147,10 +215,70 @@ const XMLParser = () => {
       </div>
       
       {/* Summary Display */}
-      {/* ... (el resto del código de visualización permanece igual) */}
+      {Object.keys(summary).length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-xl font-bold mb-2">Summary</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <h4 className="text-lg font-semibold mb-2">Studs</h4>
+              <ul>
+                {Object.entries(summary.studs).map(([length, count]) => (
+                  <li key={length}>{length}: {count}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-lg font-semibold mb-2">King Studs</h4>
+              <ul>
+                {Object.entries(summary.kingStuds).map(([length, count]) => (
+                  <li key={length}>{length}: {count}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div className="mt-4">
+            <p>Total Headers (3-3-0): {summary.totalHeaders330}</p>
+            <p>Total Jacks (6-9-6): {summary.totalJacks696}</p>
+          </div>
+        </div>
+      )}
       
       {/* Parsed XML Data Display */}
-      {/* ... (el resto del código de visualización permanece igual) */}
+      {Object.keys(parsedData).length > 0 && (
+        <div className="mb-8">
+          <h3 className="text-xl font-bold mb-2">Parsed XML Data</h3>
+          {Object.entries(parsedData).map(([jobNumber, jobData]) => (
+            <div key={jobNumber} className="mb-4">
+              <h4 className="text-lg font-semibold mb-2">Job Number: {jobNumber}</h4>
+              {Object.entries(jobData).map(([fileName, fileData]) => (
+                <div key={fileName} className="mb-2">
+                  <h5 className="text-md font-semibold mb-1">File: {fileName}</h5>
+                  <table className="w-full border-collapse border border-gray-300">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border border-gray-300 p-2">Type</th>
+                        <th className="border border-gray-300 p-2">Length</th>
+                        <th className="border border-gray-300 p-2">Count</th>
+                        <th className="border border-gray-300 p-2">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fileData.map((item, index) => (
+                        <tr key={index}>
+                          <td className="border border-gray-300 p-2">{item.type}</td>
+                          <td className="border border-gray-300 p-2">{item.convertedLength}</td>
+                          <td className="border border-gray-300 p-2">{item.count}</td>
+                          <td className="border border-gray-300 p-2">{item.description}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
       
       {/* Mesa 2 Data Display */}
       {mesa2Data.length > 0 && (
@@ -206,4 +334,3 @@ const XMLParser = () => {
 };
 
 export default XMLParser;
-      
