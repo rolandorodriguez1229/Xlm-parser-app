@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+iimport React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 
 const XMLParser = () => {
@@ -13,12 +13,96 @@ const XMLParser = () => {
   const [mesa3Data, setMesa3Data] = useState([]);
   const [validJobNumbers, setValidJobNumbers] = useState(new Set());
   
-  // New states to store uploaded files
   const [xmlFiles, setXmlFiles] = useState([]);
   const [mesa2File, setMesa2File] = useState(null);
   const [mesa3File, setMesa3File] = useState(null);
 
-  // ... (keep all the existing functions: parseXML, convertLength, groupAndSortData, updateSummary)
+  const parseXML = (xmlString) => {
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
+    
+    const extractedData = Array.from(memberDataElements)
+      .map(member => ({
+        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
+        name: member.getElementsByTagName("NAME")[0]?.textContent || '',
+        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
+        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
+        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
+      }))
+      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
+
+    return groupAndSortData(extractedData);
+  };
+
+  const convertLength = (inches) => {
+    const feet = Math.floor(inches / 12);
+    const remainingInches = inches % 12;
+    const wholeInches = Math.floor(remainingInches);
+    const fraction = remainingInches - wholeInches;
+    const sixteenths = Math.round(fraction * 16);
+    
+    return `${feet}-${wholeInches}-${sixteenths}`;
+  };
+
+  const groupAndSortData = (data) => {
+    const typeOrder = ['STUD', 'KING STUD', 'JACK'];
+    const grouped = data.reduce((acc, item) => {
+      const key = `${item.type}-${item.length}`;
+      if (!acc[key]) {
+        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
+      }
+      acc[key].count++;
+      return acc;
+    }, {});
+
+    return Object.values(grouped).sort((a, b) => {
+      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
+      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
+      if (typeOrderA !== -1 && typeOrderB !== -1) {
+        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
+      } else if (typeOrderA !== -1) {
+        return -1;
+      } else if (typeOrderB !== -1) {
+        return 1;
+      }
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return b.length - a.length;
+    });
+  };
+
+  const updateSummary = (newParsedData) => {
+    const newSummary = {
+      studs: {},
+      kingStuds: {},
+      totalHeaders330: 0,
+      totalJacks696: 0
+    };
+
+    Object.values(newParsedData).forEach(jobData => {
+      Object.values(jobData).forEach(fileData => {
+        fileData.forEach(item => {
+          if (item.type.toUpperCase() === 'STUD') {
+            if (!newSummary.studs[item.convertedLength]) {
+              newSummary.studs[item.convertedLength] = 0;
+            }
+            newSummary.studs[item.convertedLength] += item.count;
+          } else if (item.type.toUpperCase() === 'KING STUD') {
+            if (!newSummary.kingStuds[item.convertedLength]) {
+              newSummary.kingStuds[item.convertedLength] = 0;
+            }
+            newSummary.kingStuds[item.convertedLength] += item.count;
+          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
+            newSummary.totalHeaders330 += item.count;
+          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
+            newSummary.totalJacks696 += item.count;
+          }
+        });
+      });
+    });
+
+    setSummary(newSummary);
+  };
 
   const handleXMLUpload = (event) => {
     setXmlFiles(Array.from(event.target.files));
@@ -34,7 +118,6 @@ const XMLParser = () => {
   };
 
   const processFiles = async () => {
-    // Process XLS files
     if (mesa2File) {
       await processXLSFile(mesa2File, 2);
     }
@@ -42,7 +125,6 @@ const XMLParser = () => {
       await processXLSFile(mesa3File, 3);
     }
 
-    // Process XML files
     const newParsedData = {};
     for (let file of xmlFiles) {
       const pathParts = file.webkitRelativePath.split('/');
@@ -156,7 +238,6 @@ const XMLParser = () => {
         />
       </div>
 
-      {/* New Process Button */}
       <button
         onClick={processFiles}
         className="mb-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
