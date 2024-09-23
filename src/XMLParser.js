@@ -1,11 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 
 const XMLParser = () => {
-  const [xmlData, setXmlData] = useState({});
-  const [mesa2Data, setMesa2Data] = useState([]);
-  const [mesa3Data, setMesa3Data] = useState([]);
+  const [xmlFiles, setXmlFiles] = useState([]);
+  const [mesa2File, setMesa2File] = useState(null);
+  const [mesa3File, setMesa3File] = useState(null);
   const [combinedData, setCombinedData] = useState({});
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleXMLUpload = (event) => {
+    setXmlFiles(Array.from(event.target.files));
+  };
+
+  const handleXLSUpload = (event, mesa) => {
+    if (mesa === 2) {
+      setMesa2File(event.target.files[0]);
+    } else if (mesa === 3) {
+      setMesa3File(event.target.files[0]);
+    }
+  };
 
   const parseXML = (xmlString) => {
     const parser = new DOMParser();
@@ -33,59 +46,50 @@ const XMLParser = () => {
     return `${feet}-${wholeInches}-${sixteenths}`;
   };
 
-  const handleXMLUpload = async (event) => {
-    const files = event.target.files;
-    const newXmlData = {};
+  const processData = async () => {
+    setIsProcessing(true);
+    const xmlData = {};
+    let mesa2Data = [];
+    let mesa3Data = [];
 
-    for (let file of files) {
+    // Process XML files
+    for (let file of xmlFiles) {
+      const content = await file.text();
       const pathParts = file.webkitRelativePath.split('/');
       const jobNumber = pathParts[pathParts.length - 2];
       const fileName = pathParts[pathParts.length - 1];
-
-      const content = await file.text();
       const fileData = parseXML(content);
 
-      if (!newXmlData[jobNumber]) {
-        newXmlData[jobNumber] = {};
+      if (!xmlData[jobNumber]) {
+        xmlData[jobNumber] = {};
       }
-      newXmlData[jobNumber][fileName] = fileData.map(item => ({
+      xmlData[jobNumber][fileName] = fileData.map(item => ({
         ...item,
         convertedLength: convertLength(item.length)
       }));
     }
 
-    setXmlData(newXmlData);
-  };
+    // Process Mesa 2 XLS file
+    if (mesa2File) {
+      const data = await readXLSFile(mesa2File);
+      mesa2Data = data.slice(1).map(row => ({
+        orderId: row[0],
+        bundle: row[1],
+        LF: row[2]?.includes('/') ? row[2].split('/')[1].trim() : row[2]
+      }));
+    }
 
-  const handleXLSUpload = (event, mesa) => {
-    const file = event.target.files[0];
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const data = new Uint8Array(e.target.result);
-      const workbook = XLSX.read(data, {type: 'array'});
-      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(firstSheet, {header: 1});
-      
-      if (mesa === 2) {
-        const processedData = jsonData.slice(1).map(row => ({
-          orderId: row[0],
-          bundle: row[1],
-          LF: row[2]?.includes('/') ? row[2].split('/')[1].trim() : row[2]
-        }));
-        setMesa2Data(processedData);
-      } else if (mesa === 3) {
-        const processedData = jsonData.slice(1).map(row => ({
-          job: row[0],
-          bundle: row[1],
-          panels: row[2]?.includes('/') ? row[2].split('/')[1].trim() : row[2]
-        }));
-        setMesa3Data(processedData);
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
+    // Process Mesa 3 XLS file
+    if (mesa3File) {
+      const data = await readXLSFile(mesa3File);
+      mesa3Data = data.slice(1).map(row => ({
+        job: row[0],
+        bundle: row[1],
+        panels: row[2]?.includes('/') ? row[2].split('/')[1].trim() : row[2]
+      }));
+    }
 
-  useEffect(() => {
+    // Combine all data
     const combined = {};
     
     mesa2Data.forEach(item => {
@@ -109,7 +113,22 @@ const XMLParser = () => {
     });
     
     setCombinedData(combined);
-  }, [xmlData, mesa2Data, mesa3Data]);
+    setIsProcessing(false);
+  };
+
+  const readXLSFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, {type: 'array'});
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json(firstSheet, {header: 1}));
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
@@ -163,6 +182,17 @@ const XMLParser = () => {
             file:bg-blue-50 file:text-blue-700
             hover:file:bg-blue-100"
         />
+      </div>
+
+      {/* Process button */}
+      <div className="mb-4">
+        <button
+          onClick={processData}
+          disabled={isProcessing || (xmlFiles.length === 0 && !mesa2File && !mesa3File)}
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+        >
+          {isProcessing ? 'Processing...' : 'Process Data'}
+        </button>
       </div>
       
       {/* Combined Data Display */}
