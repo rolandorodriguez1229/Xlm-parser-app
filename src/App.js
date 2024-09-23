@@ -1,4 +1,3 @@
-javascript
      import React from 'react';
      import XMLParser from './XMLParser';
 
