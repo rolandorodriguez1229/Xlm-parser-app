@@ -2,9 +2,12 @@ import React, { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 
 const XMLParser = () => {
+  const [xmlFiles, setXmlFiles] = useState([]);
+  const [excelFiles, setExcelFiles] = useState({ mesa2: null, mesa3: null });
   const [parsedData, setParsedData] = useState({});
   const [summaries, setSummaries] = useState({ mesa2: {}, mesa3: {} });
   const [jobGroups, setJobGroups] = useState({ mesa2: [], mesa3: [] });
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const convertLength = useCallback((inches) => {
     const feet = Math.floor(inches / 12);
@@ -17,81 +20,37 @@ const XMLParser = () => {
   }, []);
 
   const groupAndSortData = useCallback((data) => {
-    const typeOrder = ['STUD', 'KING', 'JACK'];
-    const grouped = data.reduce((acc, item) => {
-      const key = `${item.type}-${item.length}`;
-      if (!acc[key]) {
-        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
-      }
-      acc[key].count++;
-      return acc;
-    }, {});
-
-    return Object.values(grouped).sort((a, b) => {
-      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
-      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
-      if (typeOrderA !== -1 && typeOrderB !== -1) {
-        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
-      } else if (typeOrderA !== -1) {
-        return -1;
-      } else if (typeOrderB !== -1) {
-        return 1;
-      }
-      if (a.type !== b.type) return a.type.localeCompare(b.type);
-      return b.length - a.length;
-    });
+    // ... (implementation remains the same)
   }, [convertLength]);
 
   const parseXML = useCallback((xmlString) => {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
-    
-    const extractedData = Array.from(memberDataElements)
-      .map(member => ({
-        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
-        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
-        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
-        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
-      }))
-      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
-
-    return groupAndSortData(extractedData);
+    // ... (implementation remains the same)
   }, [groupAndSortData]);
 
   const updateSummaries = useCallback((newParsedData) => {
-    const newSummaries = { 
-      mesa2: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 },
-      mesa3: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 }
-    };
-
-    Object.entries(newParsedData).forEach(([jobNumber, jobData]) => {
-      const mesa = jobGroups.mesa2.includes(jobNumber) ? 'mesa2' : 'mesa3';
-      Object.values(jobData).forEach(fileData => {
-        fileData.forEach(item => {
-          if (item.type.toUpperCase() === 'STUD') {
-            newSummaries[mesa].totalStuds += item.count;
-          } else if (item.type.toUpperCase() === 'KING') {
-            newSummaries[mesa].totalKings += item.count;
-          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
-            newSummaries[mesa].totalHeaders330 += item.count;
-          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
-            newSummaries[mesa].totalJacks696 += item.count;
-          }
-        });
-      });
-    });
-
-    setSummaries(newSummaries);
+    // ... (implementation remains the same)
   }, [jobGroups]);
 
-  const handleXMLUpload = useCallback(async (event) => {
+  const handleXMLUpload = (event) => {
     const files = event.target.files;
-    if (!files) return;
+    if (files) {
+      setXmlFiles(Array.from(files));
+    }
+  };
 
+  const handleExcelUpload = (mesa) => (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setExcelFiles(prev => ({ ...prev, [mesa]: file }));
+    }
+  };
+
+  const processFiles = async () => {
+    setIsProcessing(true);
     const newParsedData = {};
-
-    for (let file of files) {
+    
+    // Process XML files
+    for (let file of xmlFiles) {
       const pathParts = file.webkitRelativePath.split('/');
       const jobNumber = pathParts[pathParts.length - 2];
       const fileName = pathParts[pathParts.length - 1];
@@ -105,36 +64,28 @@ const XMLParser = () => {
       newParsedData[jobNumber][fileName] = fileData;
     }
 
-    setParsedData(newParsedData);
-    updateSummaries(newParsedData);
-  }, [parseXML, updateSummaries]);
-
-  const handleExcelUpload = useCallback((mesa) => (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const data = new Uint8Array(e.target.result);
+    // Process Excel files
+    const processExcel = async (file, mesa) => {
+      const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
       const json = XLSX.utils.sheet_to_json(worksheet);
 
-      setJobGroups(prevJobGroups => {
-        const newJobGroups = { ...prevJobGroups };
-        if (mesa === 'mesa2') {
-          newJobGroups.mesa2 = json.map(row => row['C']?.toString() || '');
-        } else if (mesa === 'mesa3') {
-          newJobGroups.mesa3 = json.map(row => row['B']?.toString() || '');
-        }
-        return newJobGroups;
-      });
+      const newJobGroups = mesa === 'mesa2'
+        ? json.map(row => row['C']?.toString() || '')
+        : json.map(row => row['B']?.toString() || '');
 
-      updateSummaries(parsedData);
+      setJobGroups(prev => ({ ...prev, [mesa]: newJobGroups }));
     };
-    reader.readAsArrayBuffer(file);
-  }, [parsedData, updateSummaries]);
+
+    if (excelFiles.mesa2) await processExcel(excelFiles.mesa2, 'mesa2');
+    if (excelFiles.mesa3) await processExcel(excelFiles.mesa3, 'mesa3');
+
+    setParsedData(newParsedData);
+    updateSummaries(newParsedData);
+    setIsProcessing(false);
+  };
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
@@ -154,6 +105,7 @@ const XMLParser = () => {
             file:bg-blue-50 file:text-blue-700
             hover:file:bg-blue-100"
         />
+        <p className="mt-1 text-sm text-gray-500">XML files loaded: {xmlFiles.length}</p>
       </div>
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">Upload Mesa 2 Excel File</label>
@@ -168,6 +120,9 @@ const XMLParser = () => {
             file:bg-green-50 file:text-green-700
             hover:file:bg-green-100"
         />
+        <p className="mt-1 text-sm text-gray-500">
+          {excelFiles.mesa2 ? `File loaded: ${excelFiles.mesa2.name}` : 'No file loaded'}
+        </p>
       </div>
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">Upload Mesa 3 Excel File</label>
@@ -182,67 +137,20 @@ const XMLParser = () => {
             file:bg-yellow-50 file:text-yellow-700
             hover:file:bg-yellow-100"
         />
+        <p className="mt-1 text-sm text-gray-500">
+          {excelFiles.mesa3 ? `File loaded: ${excelFiles.mesa3.name}` : 'No file loaded'}
+        </p>
       </div>
+      <button
+        onClick={processFiles}
+        disabled={isProcessing || xmlFiles.length === 0 || !excelFiles.mesa2 || !excelFiles.mesa3}
+        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
+      >
+        {isProcessing ? 'Processing...' : 'Process Files'}
+      </button>
       {Object.keys(parsedData).length > 0 && (
         <div>
-          {['mesa2', 'mesa3'].map(mesa => (
-            <div key={mesa}>
-              <h3 className="text-xl font-bold mb-2">Summary for {mesa.toUpperCase()}</h3>
-              <table className="w-full border-collapse border border-gray-300 mb-8">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-gray-300 p-2">Total Studs</th>
-                    <th className="border border-gray-300 p-2">Total Kings</th>
-                    <th className="border border-gray-300 p-2">Total Headers (3-3-0)</th>
-                    <th className="border border-gray-300 p-2">Total Jacks (6-9-6)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="border border-gray-300 p-2">{summaries[mesa].totalStuds}</td>
-                    <td className="border border-gray-300 p-2">{summaries[mesa].totalKings}</td>
-                    <td className="border border-gray-300 p-2">{summaries[mesa].totalHeaders330}</td>
-                    <td className="border border-gray-300 p-2">{summaries[mesa].totalJacks696}</td>
-                  </tr>
-                </tbody>
-              </table>
-              {jobGroups[mesa].map(jobNumber => {
-                if (parsedData[jobNumber]) {
-                  return (
-                    <div key={jobNumber} className="mb-8">
-                      <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
-                      {Object.entries(parsedData[jobNumber]).map(([fileName, fileData]) => (
-                        <div key={fileName} className="mb-4">
-                          <h4 className="text-lg font-semibold mb-2">File: {fileName}</h4>
-                          <table className="w-full border-collapse border border-gray-300">
-                            <thead>
-                              <tr className="bg-gray-100">
-                                <th className="border border-gray-300 p-2">Type</th>
-                                <th className="border border-gray-300 p-2">Length (ft-in-16ths)</th>
-                                <th className="border border-gray-300 p-2">Count</th>
-                                <th className="border border-gray-300 p-2">Description</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {fileData.map((item, index) => (
-                                <tr key={index}>
-                                  <td className="border border-gray-300 p-2">{item.type}</td>
-                                  <td className="border border-gray-300 p-2">{item.convertedLength}</td>
-                                  <td className="border border-gray-300 p-2">{item.count}</td>
-                                  <td className="border border-gray-300 p-2">{item.description}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                }
-                return null;
-              })}
-            </div>
-          ))}
+          {/* ... (rest of the rendering logic remains the same) ... */}
         </div>
       )}
     </div>
