@@ -7,15 +7,57 @@ const XMLParser = () => {
   const [jobGroups, setJobGroups] = useState({ mesa2: [], mesa3: [] });
 
   const parseXML = (xmlString) => {
-    // ... (mismo código que antes)
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
+    
+    const extractedData = Array.from(memberDataElements)
+      .map(member => ({
+        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
+        name: member.getElementsByTagName("NAME")[0]?.textContent || '',
+        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
+        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
+        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
+      }))
+      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
+
+    return groupAndSortData(extractedData);
   };
 
   const convertLength = (inches) => {
-    // ... (mismo código que antes)
+    const feet = Math.floor(inches / 12);
+    const remainingInches = inches % 12;
+    const wholeInches = Math.floor(remainingInches);
+    const fraction = remainingInches - wholeInches;
+    const sixteenths = Math.round(fraction * 16);
+    
+    return `${feet}-${wholeInches}-${sixteenths}`;
   };
 
   const groupAndSortData = (data) => {
-    // ... (mismo código que antes)
+    const typeOrder = ['STUD', 'KING', 'JACK'];
+    const grouped = data.reduce((acc, item) => {
+      const key = `${item.type}-${item.length}`;
+      if (!acc[key]) {
+        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
+      }
+      acc[key].count++;
+      return acc;
+    }, {});
+
+    return Object.values(grouped).sort((a, b) => {
+      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
+      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
+      if (typeOrderA !== -1 && typeOrderB !== -1) {
+        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
+      } else if (typeOrderA !== -1) {
+        return -1;
+      } else if (typeOrderB !== -1) {
+        return 1;
+      }
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return b.length - a.length;
+    });
   };
 
   const updateSummaries = (newParsedData) => {
@@ -52,7 +94,7 @@ const XMLParser = () => {
       const fileName = pathParts[pathParts.length - 1];
 
       const content = await file.text();
-      const fileData = parseXML(content, fileName, jobNumber);
+      const fileData = parseXML(content);
 
       if (!newParsedData[jobNumber]) {
         newParsedData[jobNumber] = {};
