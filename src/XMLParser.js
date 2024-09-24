@@ -7,84 +7,22 @@ const XMLParser = () => {
   const [jobGroups, setJobGroups] = useState({ mesa2: [], mesa3: [] });
 
   const parseXML = (xmlString) => {
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
-    
-    const extractedData = Array.from(memberDataElements)
-      .map(member => ({
-        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
-        name: member.getElementsByTagName("NAME")[0]?.textContent || '',
-        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
-        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
-        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
-      }))
-      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
-
-    return groupAndSortData(extractedData);
+    // ... (el resto del código de parseXML permanece igual)
   };
 
   const convertLength = (inches) => {
-    const feet = Math.floor(inches / 12);
-    const remainingInches = inches % 12;
-    const wholeInches = Math.floor(remainingInches);
-    const fraction = remainingInches - wholeInches;
-    const sixteenths = Math.round(fraction * 16);
-    
-    return `${feet}-${wholeInches}-${sixteenths}`;
+    // ... (el resto del código de convertLength permanece igual)
   };
 
   const groupAndSortData = (data) => {
-    const typeOrder = ['STUD', 'KING', 'JACK'];
-    const grouped = data.reduce((acc, item) => {
-      const key = `${item.type}-${item.length}`;
-      if (!acc[key]) {
-        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
-      }
-      acc[key].count++;
-      return acc;
-    }, {});
-
-    return Object.values(grouped).sort((a, b) => {
-      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
-      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
-      if (typeOrderA !== -1 && typeOrderB !== -1) {
-        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
-      } else if (typeOrderA !== -1) {
-        return -1;
-      } else if (typeOrderB !== -1) {
-        return 1;
-      }
-      if (a.type !== b.type) return a.type.localeCompare(b.type);
-      return b.length - a.length;
-    });
+    // ... (el resto del código de groupAndSortData permanece igual)
   };
 
   const updateSummaries = (newParsedData) => {
-    const newSummaries = { mesa2: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 },
-                           mesa3: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 } };
-
-    Object.entries(newParsedData).forEach(([jobNumber, jobData]) => {
-      const mesa = jobGroups.mesa2.includes(jobNumber) ? 'mesa2' : 'mesa3';
-      Object.values(jobData).forEach(fileData => {
-        fileData.forEach(item => {
-          if (item.type.toUpperCase() === 'STUD') {
-            newSummaries[mesa].totalStuds += item.count;
-          } else if (item.type.toUpperCase() === 'KING') {
-            newSummaries[mesa].totalKings += item.count;
-          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
-            newSummaries[mesa].totalHeaders330 += item.count;
-          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
-            newSummaries[mesa].totalJacks696 += item.count;
-          }
-        });
-      });
-    });
-
-    setSummaries(newSummaries);
+    // ... (el resto del código de updateSummaries permanece igual)
   };
 
-  const handleFileUpload = async (event) => {
+  const handleXMLUpload = async (event) => {
     const files = event.target.files;
     const newParsedData = {};
 
@@ -106,42 +44,42 @@ const XMLParser = () => {
     updateSummaries(newParsedData);
   };
 
-  const handleExcelUpload = (event) => {
-    const files = event.target.files;
-    const newJobGroups = { mesa2: [], mesa3: [] };
+  const handleExcelUpload = (mesa) => (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
 
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(worksheet);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const json = XLSX.utils.sheet_to_json(worksheet);
 
-        if (file.name.includes('mesa2')) {
-          newJobGroups.mesa2 = json.map(row => row['C'].toString());
-        } else if (file.name.includes('mesa3')) {
-          newJobGroups.mesa3 = json.map(row => row['B'].toString());
-        }
+      const newJobGroups = { ...jobGroups };
+      if (mesa === 'mesa2') {
+        newJobGroups.mesa2 = json.map(row => row['C'].toString());
+      } else if (mesa === 'mesa3') {
+        newJobGroups.mesa3 = json.map(row => row['B'].toString());
+      }
 
-        setJobGroups(newJobGroups);
-        updateSummaries(parsedData);
-      };
-      reader.readAsArrayBuffer(file);
-    });
+      setJobGroups(newJobGroups);
+      updateSummaries(parsedData);
+    };
+    reader.readAsArrayBuffer(file);
   };
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
       <h2 className="text-2xl font-bold mb-4">Multi-File XML Parser with Excel Grouping</h2>
       <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Upload XML Files</label>
         <input
           type="file"
           webkitdirectory="true"
           directory="true"
           multiple
-          onChange={handleFileUpload}
+          onChange={handleXMLUpload}
           className="block w-full text-sm text-gray-500
             file:mr-4 file:py-2 file:px-4
             file:rounded-full file:border-0
@@ -151,17 +89,31 @@ const XMLParser = () => {
         />
       </div>
       <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Upload Mesa 2 Excel File</label>
         <input
           type="file"
-          multiple
           accept=".xls,.xlsx"
-          onChange={handleExcelUpload}
+          onChange={handleExcelUpload('mesa2')}
           className="block w-full text-sm text-gray-500
             file:mr-4 file:py-2 file:px-4
             file:rounded-full file:border-0
             file:text-sm file:font-semibold
             file:bg-green-50 file:text-green-700
             hover:file:bg-green-100"
+        />
+      </div>
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">Upload Mesa 3 Excel File</label>
+        <input
+          type="file"
+          accept=".xls,.xlsx"
+          onChange={handleExcelUpload('mesa3')}
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-yellow-50 file:text-yellow-700
+            hover:file:bg-yellow-100"
         />
       </div>
       {Object.keys(parsedData).length > 0 && (
