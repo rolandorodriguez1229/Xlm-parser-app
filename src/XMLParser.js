@@ -1,62 +1,130 @@
-import React, { useState, useCallback } from 'react';
-import * as XLSX from 'xlsx';
+import React, { useState } from 'react';
 
 const XMLParser = () => {
-  const [xmlFiles, setXmlFiles] = useState([]);
-  const [excelFiles, setExcelFiles] = useState({ mesa2: null, mesa3: null });
   const [parsedData, setParsedData] = useState({});
-  const [summaries, setSummaries] = useState({ mesa2: {}, mesa3: {} });
-  const [jobGroups, setJobGroups] = useState({ mesa2: [], mesa3: [] });
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [summary, setSummary] = useState([]);
 
-  const convertLength = useCallback((inches) => {
+  const parseXML = (xmlString, fileName, jobNumber) => {
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
+
+    const extractedData = Array.from(memberDataElements)
+      .map(member => ({
+        type: member.getElementsByTagName("TYPE")[0]?.textContent.trim().toUpperCase() || '',
+        name: member.getElementsByTagName("NAME")[0]?.textContent || '',
+        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
+        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
+        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
+      }))
+      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
+
+    return groupAndSortData(extractedData);
+  };
+
+  const convertLength = (inches) => {
     const feet = Math.floor(inches / 12);
     const remainingInches = inches % 12;
     const wholeInches = Math.floor(remainingInches);
     const fraction = remainingInches - wholeInches;
     const sixteenths = Math.round(fraction * 16);
-    
+
     return `${feet}-${wholeInches}-${sixteenths}`;
-  }, []);
+  };
 
-  const groupAndSortData = useCallback((data) => {
-    // ... (implementation remains the same)
-  }, [convertLength]);
+  const groupAndSortData = (data) => {
+    // Orden personalizado para las tablas de los trabajos
+    const typeOrder = ['KING', 'JACK', 'SILL', 'SILL CRIPPLE', 'HEADER', 'HEADER CRIPPLE'];
 
-  const parseXML = useCallback((xmlString) => {
-    // ... (implementation remains the same)
-  }, [groupAndSortData]);
+    const grouped = data.reduce((acc, item) => {
+      const key = `${item.type}-${item.length}-${item.description}`;
+      if (!acc[key]) {
+        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
+      }
+      acc[key].count++;
+      return acc;
+    }, {});
 
-  const updateSummaries = useCallback((newParsedData) => {
-    // ... (implementation remains the same)
-  }, [jobGroups]);
+    return Object.values(grouped).sort((a, b) => {
+      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
+      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
 
-  const handleXMLUpload = (event) => {
+      if (typeOrderA !== -1 && typeOrderB !== -1) {
+        if (typeOrderA !== typeOrderB) {
+          return typeOrderA - typeOrderB;
+        }
+      } else if (typeOrderA !== -1) {
+        return -1;
+      } else if (typeOrderB !== -1) {
+        return 1;
+      } else {
+        // Si ambos tipos no están en typeOrder, los ordenamos alfabéticamente
+        return a.type.localeCompare(b.type);
+      }
+
+      // Ordenamos por longitud de mayor a menor
+      return b.length - a.length;
+    });
+  };
+
+  const updateSummary = (newParsedData) => {
+    const newSummary = [];
+
+    Object.values(newParsedData).forEach(jobData => {
+      Object.values(jobData).forEach(fileData => {
+        fileData.forEach(item => {
+          if (['STUD', 'KING', 'JACK', 'HEADER'].includes(item.type.toUpperCase())) {
+            const summaryItem = newSummary.find(
+              si => si.materialType === item.type &&
+                    si.length === item.convertedLength &&
+                    si.description === item.description
+            );
+
+            if (summaryItem) {
+              summaryItem.quantity += item.count;
+            } else {
+              newSummary.push({
+                materialType: item.type,
+                length: item.convertedLength,
+                description: item.description,
+                quantity: item.count
+              });
+            }
+          }
+        });
+      });
+    });
+
+    // Mantener el orden original del resumen
+    newSummary.sort((a, b) => {
+      const typeOrder = ['STUD', 'KING', 'JACK', 'HEADER'];
+      const typeOrderA = typeOrder.indexOf(a.materialType.toUpperCase());
+      const typeOrderB = typeOrder.indexOf(b.materialType.toUpperCase());
+      if (typeOrderA !== typeOrderB) {
+        return typeOrderA - typeOrderB;
+      }
+      // Convertir la longitud de vuelta a pulgadas para comparar
+      const [feetA, inchesA, sixteenthsA] = a.length.split('-').map(Number);
+      const [feetB, inchesB, sixteenthsB] = b.length.split('-').map(Number);
+      const totalInchesA = feetA * 12 + inchesA + sixteenthsA / 16;
+      const totalInchesB = feetB * 12 + inchesB + sixteenthsB / 16;
+      return totalInchesB - totalInchesA;
+    });
+
+    setSummary(newSummary);
+  };
+
+  const handleFileUpload = async (event) => {
     const files = event.target.files;
-    if (files) {
-      setXmlFiles(Array.from(files));
-    }
-  };
-
-  const handleExcelUpload = (mesa) => (event) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setExcelFiles(prev => ({ ...prev, [mesa]: file }));
-    }
-  };
-
-  const processFiles = async () => {
-    setIsProcessing(true);
     const newParsedData = {};
-    
-    // Process XML files
-    for (let file of xmlFiles) {
+
+    for (let file of files) {
       const pathParts = file.webkitRelativePath.split('/');
       const jobNumber = pathParts[pathParts.length - 2];
       const fileName = pathParts[pathParts.length - 1];
 
       const content = await file.text();
-      const fileData = parseXML(content);
+      const fileData = parseXML(content, fileName, jobNumber);
 
       if (!newParsedData[jobNumber]) {
         newParsedData[jobNumber] = {};
@@ -64,40 +132,45 @@ const XMLParser = () => {
       newParsedData[jobNumber][fileName] = fileData;
     }
 
-    // Process Excel files
-    const processExcel = async (file, mesa) => {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-      const json = XLSX.utils.sheet_to_json(worksheet);
-
-      const newJobGroups = mesa === 'mesa2'
-        ? json.map(row => row['C']?.toString() || '')
-        : json.map(row => row['B']?.toString() || '');
-
-      setJobGroups(prev => ({ ...prev, [mesa]: newJobGroups }));
-    };
-
-    if (excelFiles.mesa2) await processExcel(excelFiles.mesa2, 'mesa2');
-    if (excelFiles.mesa3) await processExcel(excelFiles.mesa3, 'mesa3');
-
     setParsedData(newParsedData);
-    updateSummaries(newParsedData);
-    setIsProcessing(false);
+    updateSummary(newParsedData);
+  };
+
+  const renderSummary = () => {
+    let currentType = null;
+    return summary.map((item, index) => {
+      const isNewType = currentType !== item.materialType;
+      if (isNewType) {
+        currentType = item.materialType;
+      }
+      return (
+        <React.Fragment key={index}>
+          {isNewType && index !== 0 && (
+            <tr className="h-4">
+              <td colSpan="4"></td>
+            </tr>
+          )}
+          <tr>
+            <td className="border border-gray-300 p-2 text-center">{item.materialType}</td>
+            <td className="border border-gray-300 p-2 text-center">{item.length}</td>
+            <td className="border border-gray-300 p-2 text-center">{item.quantity}</td>
+            <td className="border border-gray-300 p-2 text-center">{item.description}</td>
+          </tr>
+        </React.Fragment>
+      );
+    });
   };
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Multi-File XML Parser with Excel Grouping</h2>
+      <h2 className="text-2xl font-bold mb-4">Multi-File XML Parser</h2>
       <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Upload XML Files</label>
         <input
           type="file"
           webkitdirectory="true"
           directory="true"
           multiple
-          onChange={handleXMLUpload}
+          onChange={handleFileUpload}
           className="block w-full text-sm text-gray-500
             file:mr-4 file:py-2 file:px-4
             file:rounded-full file:border-0
@@ -105,54 +178,55 @@ const XMLParser = () => {
             file:bg-blue-50 file:text-blue-700
             hover:file:bg-blue-100"
         />
-        <p className="mt-1 text-sm text-gray-500">XML files loaded: {xmlFiles.length}</p>
       </div>
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Upload Mesa 2 Excel File</label>
-        <input
-          type="file"
-          accept=".xls,.xlsx"
-          onChange={handleExcelUpload('mesa2')}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-full file:border-0
-            file:text-sm file:font-semibold
-            file:bg-green-50 file:text-green-700
-            hover:file:bg-green-100"
-        />
-        <p className="mt-1 text-sm text-gray-500">
-          {excelFiles.mesa2 ? `File loaded: ${excelFiles.mesa2.name}` : 'No file loaded'}
-        </p>
-      </div>
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Upload Mesa 3 Excel File</label>
-        <input
-          type="file"
-          accept=".xls,.xlsx"
-          onChange={handleExcelUpload('mesa3')}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-full file:border-0
-            file:text-sm file:font-semibold
-            file:bg-yellow-50 file:text-yellow-700
-            hover:file:bg-yellow-100"
-        />
-        <p className="mt-1 text-sm text-gray-500">
-          {excelFiles.mesa3 ? `File loaded: ${excelFiles.mesa3.name}` : 'No file loaded'}
-        </p>
-      </div>
-      <button
-        onClick={processFiles}
-        disabled={isProcessing || xmlFiles.length === 0 || !excelFiles.mesa2 || !excelFiles.mesa3}
-        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
-      >
-        {isProcessing ? 'Processing...' : 'Process Files'}
-      </button>
-      {Object.keys(parsedData).length > 0 && (
+      {summary.length > 0 && (
         <div>
-          {/* ... (rest of the rendering logic remains the same) ... */}
+          <h3 className="text-xl font-bold mb-2">Summary</h3>
+          <table className="w-full border-collapse border border-gray-300 mb-8">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border border-gray-300 p-2 text-center">Material Type</th>
+                <th className="border border-gray-300 p-2 text-center">Length</th>
+                <th className="border border-gray-300 p-2 text-center">Quantity</th>
+                <th className="border border-gray-300 p-2 text-center">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {renderSummary()}
+            </tbody>
+          </table>
         </div>
       )}
+      {Object.entries(parsedData).map(([jobNumber, jobData]) => (
+        <div key={jobNumber} className="mb-8">
+          <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
+          {Object.entries(jobData).map(([fileName, fileData]) => (
+            <div key={fileName} className="mb-4">
+              <h4 className="text-lg font-semibold mb-2">File: {fileName}</h4>
+              <table className="w-full border-collapse border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 p-2 text-center">Type</th>
+                    <th className="border border-gray-300 p-2 text-center">Length (ft-in-16ths)</th>
+                    <th className="border border-gray-300 p-2 text-center">Count</th>
+                    <th className="border border-gray-300 p-2 text-center">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fileData.map((item, index) => (
+                    <tr key={index}>
+                      <td className="border border-gray-300 p-2 text-center">{item.type}</td>
+                      <td className="border border-gray-300 p-2 text-center">{item.convertedLength}</td>
+                      <td className="border border-gray-300 p-2 text-center">{item.count}</td>
+                      <td className="border border-gray-300 p-2 text-center">{item.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 };
