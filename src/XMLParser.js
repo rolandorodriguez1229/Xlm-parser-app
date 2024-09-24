@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 
 const XMLParser = () => {
@@ -6,7 +6,7 @@ const XMLParser = () => {
   const [summaries, setSummaries] = useState({ mesa2: {}, mesa3: {} });
   const [jobGroups, setJobGroups] = useState({ mesa2: [], mesa3: [] });
 
-  const parseXML = (xmlString) => {
+  const parseXML = useCallback((xmlString) => {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlString, "text/xml");
     const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
@@ -21,9 +21,9 @@ const XMLParser = () => {
       .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
 
     return groupAndSortData(extractedData);
-  };
+  }, []);
 
-  const convertLength = (inches) => {
+  const convertLength = useCallback((inches) => {
     const feet = Math.floor(inches / 12);
     const remainingInches = inches % 12;
     const wholeInches = Math.floor(remainingInches);
@@ -31,9 +31,9 @@ const XMLParser = () => {
     const sixteenths = Math.round(fraction * 16);
     
     return `${feet}-${wholeInches}-${sixteenths}`;
-  };
+  }, []);
 
-  const groupAndSortData = (data) => {
+  const groupAndSortData = useCallback((data) => {
     const typeOrder = ['STUD', 'KING', 'JACK'];
     const grouped = data.reduce((acc, item) => {
       const key = `${item.type}-${item.length}`;
@@ -57,9 +57,9 @@ const XMLParser = () => {
       if (a.type !== b.type) return a.type.localeCompare(b.type);
       return b.length - a.length;
     });
-  };
+  }, [convertLength]);
 
-  const updateSummaries = (newParsedData) => {
+  const updateSummaries = useCallback((newParsedData) => {
     const newSummaries = { 
       mesa2: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 },
       mesa3: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 }
@@ -83,10 +83,12 @@ const XMLParser = () => {
     });
 
     setSummaries(newSummaries);
-  };
+  }, [jobGroups]);
 
-  const handleXMLUpload = async (event) => {
+  const handleXMLUpload = useCallback(async (event) => {
     const files = event.target.files;
+    if (!files) return;
+
     const newParsedData = {};
 
     for (let file of files) {
@@ -105,10 +107,10 @@ const XMLParser = () => {
 
     setParsedData(newParsedData);
     updateSummaries(newParsedData);
-  };
+  }, [parseXML, updateSummaries]);
 
-  const handleExcelUpload = (mesa) => (event) => {
-    const file = event.target.files[0];
+  const handleExcelUpload = useCallback((mesa) => (event) => {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
@@ -119,18 +121,20 @@ const XMLParser = () => {
       const worksheet = workbook.Sheets[sheetName];
       const json = XLSX.utils.sheet_to_json(worksheet);
 
-      const newJobGroups = { ...jobGroups };
-      if (mesa === 'mesa2') {
-        newJobGroups.mesa2 = json.map(row => row['C'].toString());
-      } else if (mesa === 'mesa3') {
-        newJobGroups.mesa3 = json.map(row => row['B'].toString());
-      }
+      setJobGroups(prevJobGroups => {
+        const newJobGroups = { ...prevJobGroups };
+        if (mesa === 'mesa2') {
+          newJobGroups.mesa2 = json.map(row => row['C']?.toString() || '');
+        } else if (mesa === 'mesa3') {
+          newJobGroups.mesa3 = json.map(row => row['B']?.toString() || '');
+        }
+        return newJobGroups;
+      });
 
-      setJobGroups(newJobGroups);
       updateSummaries(parsedData);
     };
     reader.readAsArrayBuffer(file);
-  };
+  }, [parsedData, updateSummaries]);
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
