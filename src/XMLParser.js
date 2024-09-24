@@ -210,7 +210,7 @@ const XMLParser = () => {
             </div>
           ))}
         </div>
-      )}
+      ))}
     </div>
   );
 };
