@@ -7,19 +7,82 @@ const XMLParser = () => {
   const [jobGroups, setJobGroups] = useState({ mesa2: [], mesa3: [] });
 
   const parseXML = (xmlString) => {
-    // ... (el resto del código de parseXML permanece igual)
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+    const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
+    
+    const extractedData = Array.from(memberDataElements)
+      .map(member => ({
+        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
+        description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
+        length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
+        units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
+      }))
+      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
+
+    return groupAndSortData(extractedData);
   };
 
   const convertLength = (inches) => {
-    // ... (el resto del código de convertLength permanece igual)
+    const feet = Math.floor(inches / 12);
+    const remainingInches = inches % 12;
+    const wholeInches = Math.floor(remainingInches);
+    const fraction = remainingInches - wholeInches;
+    const sixteenths = Math.round(fraction * 16);
+    
+    return `${feet}-${wholeInches}-${sixteenths}`;
   };
 
   const groupAndSortData = (data) => {
-    // ... (el resto del código de groupAndSortData permanece igual)
+    const typeOrder = ['STUD', 'KING', 'JACK'];
+    const grouped = data.reduce((acc, item) => {
+      const key = `${item.type}-${item.length}`;
+      if (!acc[key]) {
+        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
+      }
+      acc[key].count++;
+      return acc;
+    }, {});
+
+    return Object.values(grouped).sort((a, b) => {
+      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
+      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
+      if (typeOrderA !== -1 && typeOrderB !== -1) {
+        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
+      } else if (typeOrderA !== -1) {
+        return -1;
+      } else if (typeOrderB !== -1) {
+        return 1;
+      }
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return b.length - a.length;
+    });
   };
 
   const updateSummaries = (newParsedData) => {
-    // ... (el resto del código de updateSummaries permanece igual)
+    const newSummaries = { 
+      mesa2: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 },
+      mesa3: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 }
+    };
+
+    Object.entries(newParsedData).forEach(([jobNumber, jobData]) => {
+      const mesa = jobGroups.mesa2.includes(jobNumber) ? 'mesa2' : 'mesa3';
+      Object.values(jobData).forEach(fileData => {
+        fileData.forEach(item => {
+          if (item.type.toUpperCase() === 'STUD') {
+            newSummaries[mesa].totalStuds += item.count;
+          } else if (item.type.toUpperCase() === 'KING') {
+            newSummaries[mesa].totalKings += item.count;
+          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
+            newSummaries[mesa].totalHeaders330 += item.count;
+          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
+            newSummaries[mesa].totalJacks696 += item.count;
+          }
+        });
+      });
+    });
+
+    setSummaries(newSummaries);
   };
 
   const handleXMLUpload = async (event) => {
