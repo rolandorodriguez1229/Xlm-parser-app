@@ -8,10 +8,10 @@ const XMLParser = () => {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlString, "text/xml");
     const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
-
+    
     const extractedData = Array.from(memberDataElements)
       .map(member => ({
-        type: member.getElementsByTagName("TYPE")[0]?.textContent.trim().toUpperCase() || '',
+        type: member.getElementsByTagName("TYPE")[0]?.textContent || '',
         name: member.getElementsByTagName("NAME")[0]?.textContent || '',
         description: member.getElementsByTagName("DESCRIPTION")[0]?.textContent || '',
         length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
@@ -28,16 +28,14 @@ const XMLParser = () => {
     const wholeInches = Math.floor(remainingInches);
     const fraction = remainingInches - wholeInches;
     const sixteenths = Math.round(fraction * 16);
-
+    
     return `${feet}-${wholeInches}-${sixteenths}`;
   };
 
   const groupAndSortData = (data) => {
-    // Orden personalizado para las tablas de los trabajos
-    const typeOrder = ['KING', 'JACK', 'SILL', 'SILL CRIPPLE', 'HEADER', 'HEADER CRIPPLE'];
-
+    const typeOrder = ['STUD', 'KING', 'JACK', 'HEADER'];
     const grouped = data.reduce((acc, item) => {
-      const key = `${item.type}-${item.length}-${item.description}`;
+      const key = `${item.type}-${item.length}`;
       if (!acc[key]) {
         acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
       }
@@ -48,21 +46,9 @@ const XMLParser = () => {
     return Object.values(grouped).sort((a, b) => {
       const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
       const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
-
-      if (typeOrderA !== -1 && typeOrderB !== -1) {
-        if (typeOrderA !== typeOrderB) {
-          return typeOrderA - typeOrderB;
-        }
-      } else if (typeOrderA !== -1) {
-        return -1;
-      } else if (typeOrderB !== -1) {
-        return 1;
-      } else {
-        // Si ambos tipos no están en typeOrder, los ordenamos alfabéticamente
-        return a.type.localeCompare(b.type);
+      if (typeOrderA !== typeOrderB) {
+        return typeOrderA - typeOrderB;
       }
-
-      // Ordenamos por longitud de mayor a menor
       return b.length - a.length;
     });
   };
@@ -79,7 +65,7 @@ const XMLParser = () => {
                     si.length === item.convertedLength &&
                     si.description === item.description
             );
-
+            
             if (summaryItem) {
               summaryItem.quantity += item.count;
             } else {
@@ -95,7 +81,6 @@ const XMLParser = () => {
       });
     });
 
-    // Mantener el orden original del resumen
     newSummary.sort((a, b) => {
       const typeOrder = ['STUD', 'KING', 'JACK', 'HEADER'];
       const typeOrderA = typeOrder.indexOf(a.materialType.toUpperCase());
@@ -103,7 +88,6 @@ const XMLParser = () => {
       if (typeOrderA !== typeOrderB) {
         return typeOrderA - typeOrderB;
       }
-      // Convertir la longitud de vuelta a pulgadas para comparar
       const [feetA, inchesA, sixteenthsA] = a.length.split('-').map(Number);
       const [feetB, inchesB, sixteenthsB] = b.length.split('-').map(Number);
       const totalInchesA = feetA * 12 + inchesA + sixteenthsA / 16;
@@ -151,10 +135,10 @@ const XMLParser = () => {
             </tr>
           )}
           <tr>
-            <td className="border border-gray-300 p-2 text-center">{item.materialType}</td>
-            <td className="border border-gray-300 p-2 text-center">{item.length}</td>
-            <td className="border border-gray-300 p-2 text-center">{item.quantity}</td>
-            <td className="border border-gray-300 p-2 text-center">{item.description}</td>
+            <td className="border border-gray-300 p-2">{item.materialType}</td>
+            <td className="border border-gray-300 p-2">{item.length}</td>
+            <td className="border border-gray-300 p-2">{item.description}</td>
+            <td className="border border-gray-300 p-2">{item.quantity}</td>
           </tr>
         </React.Fragment>
       );
@@ -185,10 +169,10 @@ const XMLParser = () => {
           <table className="w-full border-collapse border border-gray-300 mb-8">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border border-gray-300 p-2 text-center">Material Type</th>
-                <th className="border border-gray-300 p-2 text-center">Length</th>
-                <th className="border border-gray-300 p-2 text-center">Quantity</th>
-                <th className="border border-gray-300 p-2 text-center">Description</th>
+                <th className="border border-gray-300 p-2">Material Type</th>
+                <th className="border border-gray-300 p-2">Length</th>
+                <th className="border border-gray-300 p-2">Description</th>
+                <th className="border border-gray-300 p-2">Quantity</th>
               </tr>
             </thead>
             <tbody>
@@ -206,19 +190,19 @@ const XMLParser = () => {
               <table className="w-full border-collapse border border-gray-300">
                 <thead>
                   <tr className="bg-gray-100">
-                    <th className="border border-gray-300 p-2 text-center">Type</th>
-                    <th className="border border-gray-300 p-2 text-center">Length (ft-in-16ths)</th>
-                    <th className="border border-gray-300 p-2 text-center">Count</th>
-                    <th className="border border-gray-300 p-2 text-center">Description</th>
+                    <th className="border border-gray-300 p-2">Type</th>
+                    <th className="border border-gray-300 p-2">Length</th>
+                    <th className="border border-gray-300 p-2">Count</th>
+                    <th className="border border-gray-300 p-2">Description</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fileData.map((item, index) => (
                     <tr key={index}>
-                      <td className="border border-gray-300 p-2 text-center">{item.type}</td>
-                      <td className="border border-gray-300 p-2 text-center">{item.convertedLength}</td>
-                      <td className="border border-gray-300 p-2 text-center">{item.count}</td>
-                      <td className="border border-gray-300 p-2 text-center">{item.description}</td>
+                      <td className="border border-gray-300 p-2">{item.type}</td>
+                      <td className="border border-gray-300 p-2">{item.convertedLength}</td>
+                      <td className="border border-gray-300 p-2">{item.count}</td>
+                      <td className="border border-gray-300 p-2">{item.description}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -226,7 +210,7 @@ const XMLParser = () => {
             </div>
           ))}
         </div>
-      ))}
+      )}
     </div>
   );
 };
