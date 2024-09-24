@@ -2,60 +2,188 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 
 const XMLParser = () => {
-  // Comentamos parsedData si no se está utilizando directamente
-  // const [parsedData, setParsedData] = useState({});
-  const [summary, setSummary] = useState({});
-  const [mesa2Data, setMesa2Data] = useState([]);
-  const [mesa3Data, setMesa3Data] = useState([]);
-  const [validJobNumbers, setValidJobNumbers] = useState(new Set());
-  
-  const [xmlFiles, setXmlFiles] = useState([]);
-  const [mesa2File, setMesa2File] = useState(null);
-  const [mesa3File, setMesa3File] = useState(null);
+  const [parsedData, setParsedData] = useState({});
+  const [summaries, setSummaries] = useState({ mesa2: {}, mesa3: {} });
+  const [jobGroups, setJobGroups] = useState({ mesa2: [], mesa3: [] });
 
-  // ... (mantener las funciones parseXML, convertLength, groupAndSortData, createDetailedSummary como están)
-
-  const processFiles = async () => {
-    if (mesa2File) {
-      await processXLSFile(mesa2File, 2);
-    }
-    if (mesa3File) {
-      await processXLSFile(mesa3File, 3);
-    }
-
-    const newParsedData = {};
-    for (let file of xmlFiles) {
-      const pathParts = file.webkitRelativePath.split('/');
-      const jobNumber = pathParts[pathParts.length - 2];
-      
-      if (validJobNumbers.has(jobNumber)) {
-        const fileName = pathParts[pathParts.length - 1];
-        const content = await file.text();
-        const fileData = parseXML(content);
-
-        if (!newParsedData[jobNumber]) {
-          newParsedData[jobNumber] = {};
-        }
-        newParsedData[jobNumber][fileName] = fileData;
-      }
-    }
-
-    // Comentamos setParsedData si no se está utilizando
-    // setParsedData(newParsedData);
-
-    const mesa2JobNumbers = mesa2Data.map(item => item.jobNumber);
-    const mesa3JobNumbers = mesa3Data.map(item => item.jobNumber);
-    const mesa2Summary = createDetailedSummary(newParsedData, mesa2JobNumbers);
-    const mesa3Summary = createDetailedSummary(newParsedData, mesa3JobNumbers);
-
-    setSummary({ mesa2: mesa2Summary, mesa3: mesa3Summary });
+  const parseXML = (xmlString) => {
+    // ... (mismo código que antes)
   };
 
-  // ... (mantener el resto de las funciones y el JSX como están)
+  const convertLength = (inches) => {
+    // ... (mismo código que antes)
+  };
+
+  const groupAndSortData = (data) => {
+    // ... (mismo código que antes)
+  };
+
+  const updateSummaries = (newParsedData) => {
+    const newSummaries = { mesa2: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 },
+                           mesa3: { totalStuds: 0, totalKings: 0, totalHeaders330: 0, totalJacks696: 0 } };
+
+    Object.entries(newParsedData).forEach(([jobNumber, jobData]) => {
+      const mesa = jobGroups.mesa2.includes(jobNumber) ? 'mesa2' : 'mesa3';
+      Object.values(jobData).forEach(fileData => {
+        fileData.forEach(item => {
+          if (item.type.toUpperCase() === 'STUD') {
+            newSummaries[mesa].totalStuds += item.count;
+          } else if (item.type.toUpperCase() === 'KING') {
+            newSummaries[mesa].totalKings += item.count;
+          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
+            newSummaries[mesa].totalHeaders330 += item.count;
+          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
+            newSummaries[mesa].totalJacks696 += item.count;
+          }
+        });
+      });
+    });
+
+    setSummaries(newSummaries);
+  };
+
+  const handleFileUpload = async (event) => {
+    const files = event.target.files;
+    const newParsedData = {};
+
+    for (let file of files) {
+      const pathParts = file.webkitRelativePath.split('/');
+      const jobNumber = pathParts[pathParts.length - 2];
+      const fileName = pathParts[pathParts.length - 1];
+
+      const content = await file.text();
+      const fileData = parseXML(content, fileName, jobNumber);
+
+      if (!newParsedData[jobNumber]) {
+        newParsedData[jobNumber] = {};
+      }
+      newParsedData[jobNumber][fileName] = fileData;
+    }
+
+    setParsedData(newParsedData);
+    updateSummaries(newParsedData);
+  };
+
+  const handleExcelUpload = (event) => {
+    const files = event.target.files;
+    const newJobGroups = { mesa2: [], mesa3: [] };
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet);
+
+        if (file.name.includes('mesa2')) {
+          newJobGroups.mesa2 = json.map(row => row['C'].toString());
+        } else if (file.name.includes('mesa3')) {
+          newJobGroups.mesa3 = json.map(row => row['B'].toString());
+        }
+
+        setJobGroups(newJobGroups);
+        updateSummaries(parsedData);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
-      {/* ... (mantener el contenido del return como está) */}
+      <h2 className="text-2xl font-bold mb-4">Multi-File XML Parser with Excel Grouping</h2>
+      <div className="mb-4">
+        <input
+          type="file"
+          webkitdirectory="true"
+          directory="true"
+          multiple
+          onChange={handleFileUpload}
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-blue-50 file:text-blue-700
+            hover:file:bg-blue-100"
+        />
+      </div>
+      <div className="mb-4">
+        <input
+          type="file"
+          multiple
+          accept=".xls,.xlsx"
+          onChange={handleExcelUpload}
+          className="block w-full text-sm text-gray-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-green-50 file:text-green-700
+            hover:file:bg-green-100"
+        />
+      </div>
+      {Object.keys(parsedData).length > 0 && (
+        <div>
+          {['mesa2', 'mesa3'].map(mesa => (
+            <div key={mesa}>
+              <h3 className="text-xl font-bold mb-2">Summary for {mesa.toUpperCase()}</h3>
+              <table className="w-full border-collapse border border-gray-300 mb-8">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="border border-gray-300 p-2">Total Studs</th>
+                    <th className="border border-gray-300 p-2">Total Kings</th>
+                    <th className="border border-gray-300 p-2">Total Headers (3-3-0)</th>
+                    <th className="border border-gray-300 p-2">Total Jacks (6-9-6)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="border border-gray-300 p-2">{summaries[mesa].totalStuds}</td>
+                    <td className="border border-gray-300 p-2">{summaries[mesa].totalKings}</td>
+                    <td className="border border-gray-300 p-2">{summaries[mesa].totalHeaders330}</td>
+                    <td className="border border-gray-300 p-2">{summaries[mesa].totalJacks696}</td>
+                  </tr>
+                </tbody>
+              </table>
+              {jobGroups[mesa].map(jobNumber => {
+                if (parsedData[jobNumber]) {
+                  return (
+                    <div key={jobNumber} className="mb-8">
+                      <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
+                      {Object.entries(parsedData[jobNumber]).map(([fileName, fileData]) => (
+                        <div key={fileName} className="mb-4">
+                          <h4 className="text-lg font-semibold mb-2">File: {fileName}</h4>
+                          <table className="w-full border-collapse border border-gray-300">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border border-gray-300 p-2">Type</th>
+                                <th className="border border-gray-300 p-2">Length (ft-in-16ths)</th>
+                                <th className="border border-gray-300 p-2">Count</th>
+                                <th className="border border-gray-300 p-2">Description</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {fileData.map((item, index) => (
+                                <tr key={index}>
+                                  <td className="border border-gray-300 p-2">{item.type}</td>
+                                  <td className="border border-gray-300 p-2">{item.convertedLength}</td>
+                                  <td className="border border-gray-300 p-2">{item.count}</td>
+                                  <td className="border border-gray-300 p-2">{item.description}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
