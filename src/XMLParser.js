@@ -145,6 +145,14 @@ const XMLParser = () => {
     });
   };
 
+  const getStudSummary = (fileData) => {
+    const studSummary = fileData
+      .filter(item => item.type.toUpperCase() === 'STUD')
+      .map(stud => `${stud.count} ${stud.description}`)
+      .join(', ');
+    return studSummary ? `(${studSummary})` : '';
+  };
+
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
       <h2 className="text-2xl font-bold mb-4">Multi-File XML Parser</h2>
@@ -186,7 +194,9 @@ const XMLParser = () => {
           <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
           {Object.entries(jobData).map(([fileName, fileData]) => (
             <div key={fileName} className="mb-4">
-              <h4 className="text-lg font-semibold mb-2">File: {fileName}</h4>
+              <h4 className="text-lg font-semibold mb-2">
+                File: {fileName} {getStudSummary(fileData)}
+              </h4>
               <table className="w-full border-collapse border border-gray-300">
                 <thead>
                   <tr className="bg-gray-100">
