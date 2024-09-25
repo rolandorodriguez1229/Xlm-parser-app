@@ -14,18 +14,20 @@ const XMLParser = () => {
     return `${feet}-${wholeInches}-${sixteenths}`;
   };
 
-  // ... (resto de las funciones auxiliares permanecen igual)
+  // ... (otras funciones permanecen iguales)
 
   const getStudSummary = (fileData) => {
-    const studTypes = fileData
+    const studLengths = fileData
       .filter(item => item.type.toUpperCase() === 'STUD')
       .map(stud => {
-        const firstWord = stud.description.split(' ')[0];
-        return `${stud.convertedLength} ${firstWord}`;
+        const convertedLength = convertLength(stud.length);
+        const description = stud.description.split(' ')[0];  // Toma solo la primera palabra de la descripción
+        return `${convertedLength} ${description}`;
       })
-      .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+      .filter((value, index, self) => self.indexOf(value) === index)  // Elimina duplicados
       .join(', ');
-    return studTypes ? `(${studTypes})` : '';
+
+    return studLengths ? `(${studLengths})` : '';
   };
 
   // ... (resto del código permanece igual)
