@@ -146,12 +146,16 @@ const XMLParser = () => {
   };
 
   const getStudSummary = (fileData) => {
-    const studSummary = fileData
-      .filter(item => item.type.toUpperCase() === 'STUD')
-      .map(stud => `${stud.count} ${stud.description}`)
-      .join(', ');
-    return studSummary ? `(${studSummary})` : '';
-  };
+  const studSummary = fileData
+    .filter(item => item.type.toUpperCase() === 'STUD')
+    .map(stud => {
+      const firstWord = stud.description.split(' ')[0];  // Toma solo la primera palabra de la descripción
+      return `${stud.convertedLength} ${firstWord}`;
+    })
+    .filter((value, index, self) => self.indexOf(value) === index)  // Elimina duplicados
+    .join(', ');
+  return studSummary ? `(${studSummary})` : '';
+};
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
