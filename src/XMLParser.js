@@ -2,40 +2,9 @@ import React, { useState } from 'react';
 
 const XMLParser = () => {
   const [parsedData, setParsedData] = useState({});
-  const [summary, setSummary] = useState([]);
+  const [summary, setSummary] = useState({});
 
-  const convertLength = (inches) => {
-    const feet = Math.floor(inches / 12);
-    const remainingInches = inches % 12;
-    const wholeInches = Math.floor(remainingInches);
-    const fraction = remainingInches - wholeInches;
-    const sixteenths = Math.round(fraction * 16);
-    
-    return `${feet}-${wholeInches}-${sixteenths}`;
-  };
-
-  const groupAndSortData = (data) => {
-    const typeOrder = ['STUD', 'KING', 'JACK', 'HEADER'];
-    const grouped = data.reduce((acc, item) => {
-      const key = `${item.type}-${item.length}`;
-      if (!acc[key]) {
-        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
-      }
-      acc[key].count++;
-      return acc;
-    }, {});
-
-    return Object.values(grouped).sort((a, b) => {
-      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
-      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
-      if (typeOrderA !== typeOrderB) {
-        return typeOrderA - typeOrderB;
-      }
-      return b.length - a.length;
-    });
-  };
-
-  const parseXML = (xmlString) => {
+  const parseXML = (xmlString, fileName, jobNumber) => {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlString, "text/xml");
     const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
@@ -53,49 +22,75 @@ const XMLParser = () => {
     return groupAndSortData(extractedData);
   };
 
+  const convertLength = (inches) => {
+    const feet = Math.floor(inches / 12);
+    const remainingInches = inches % 12;
+    const wholeInches = Math.floor(remainingInches);
+    const fraction = remainingInches - wholeInches;
+    const sixteenths = Math.round(fraction * 16);
+    
+    return `${feet}-${wholeInches}-${sixteenths}`;
+  };
+
+  const groupAndSortData = (data) => {
+    const typeOrder = ['STUD', 'KING', 'JACK'];
+    const grouped = data.reduce((acc, item) => {
+      const key = `${item.type}-${item.length}`;
+      if (!acc[key]) {
+        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
+      }
+      acc[key].count++;
+      return acc;
+    }, {});
+
+    return Object.values(grouped).sort((a, b) => {
+      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
+      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
+      if (typeOrderA !== -1 && typeOrderB !== -1) {
+        if (typeOrderA !== typeOrderB) return typeOrderA - typeOrderB;
+      } else if (typeOrderA !== -1) {
+        return -1;
+      } else if (typeOrderB !== -1) {
+        return 1;
+      }
+      if (a.type !== b.type) return a.type.localeCompare(b.type);
+      return b.length - a.length;
+    });
+  };
+
   const updateSummary = (newParsedData) => {
-    const newSummary = [];
+    const newSummary = {
+      totalStuds: 0,
+      totalKings: 0,
+      totalHeaders330: 0,
+      totalJacks696: 0
+    };
 
     Object.values(newParsedData).forEach(jobData => {
       Object.values(jobData).forEach(fileData => {
         fileData.forEach(item => {
-          if (['STUD', 'KING', 'JACK', 'HEADER'].includes(item.type.toUpperCase())) {
-            const summaryItem = newSummary.find(
-              si => si.materialType === item.type &&
-                    si.length === item.convertedLength &&
-                    si.description === item.description
-            );
-            
-            if (summaryItem) {
-              summaryItem.quantity += item.count;
-            } else {
-              newSummary.push({
-                materialType: item.type,
-                length: item.convertedLength,
-                description: item.description,
-                quantity: item.count
-              });
-            }
+          if (item.type.toUpperCase() === 'STUD') {
+            newSummary.totalStuds += item.count;
+          } else if (item.type.toUpperCase() === 'KING') {
+            newSummary.totalKings += item.count;
+          } else if (item.type.toUpperCase() === 'HEADER' && item.convertedLength === '3-3-0') {
+            newSummary.totalHeaders330 += item.count;
+          } else if (item.type.toUpperCase() === 'JACK' && item.convertedLength === '6-9-6') {
+            newSummary.totalJacks696 += item.count;
           }
         });
       });
     });
 
-    newSummary.sort((a, b) => {
-      const typeOrder = ['STUD', 'KING', 'JACK', 'HEADER'];
-      const typeOrderA = typeOrder.indexOf(a.materialType.toUpperCase());
-      const typeOrderB = typeOrder.indexOf(b.materialType.toUpperCase());
-      if (typeOrderA !== typeOrderB) {
-        return typeOrderA - typeOrderB;
-      }
-      const [feetA, inchesA, sixteenthsA] = a.length.split('-').map(Number);
-      const [feetB, inchesB, sixteenthsB] = b.length.split('-').map(Number);
-      const totalInchesA = feetA * 12 + inchesA + sixteenthsA / 16;
-      const totalInchesB = feetB * 12 + inchesB + sixteenthsB / 16;
-      return totalInchesB - totalInchesA;
-    });
-
     setSummary(newSummary);
+  };
+
+  const getStudSummary = (fileData) => {
+    const studSummary = fileData
+      .filter(item => item.type.toUpperCase() === 'STUD')
+      .map(stud => `${stud.count} ${stud.description}`)
+      .join(', ');
+    return studSummary ? `(${studSummary})` : '';
   };
 
   const handleFileUpload = async (event) => {
@@ -108,7 +103,7 @@ const XMLParser = () => {
       const fileName = pathParts[pathParts.length - 1];
 
       const content = await file.text();
-      const fileData = parseXML(content);
+      const fileData = parseXML(content, fileName, jobNumber);
 
       if (!newParsedData[jobNumber]) {
         newParsedData[jobNumber] = {};
@@ -118,44 +113,6 @@ const XMLParser = () => {
 
     setParsedData(newParsedData);
     updateSummary(newParsedData);
-  };
-
-  const getStudSummary = (fileData) => {
-    const studSummary = fileData
-      .filter(item => item.type.toUpperCase() === 'STUD')
-      .map(stud => {
-        const firstWord = stud.description.split(' ')[0];  // Toma solo la primera palabra de la descripción
-        return `${stud.convertedLength} ${firstWord}`;
-      })
-      .filter((value, index, self) => self.indexOf(value) === index)  // Elimina duplicados
-      .join(', ');
-
-    return studSummary ? `(${studSummary})` : '';
-  };
-
-  const renderSummary = () => {
-    let currentType = null;
-    return summary.map((item, index) => {
-      const isNewType = currentType !== item.materialType;
-      if (isNewType) {
-        currentType = item.materialType;
-      }
-      return (
-        <React.Fragment key={index}>
-          {isNewType && index !== 0 && (
-            <tr className="h-4">
-              <td colSpan="4"></td>
-            </tr>
-          )}
-          <tr>
-            <td className="border border-gray-300 p-2">{item.materialType}</td>
-            <td className="border border-gray-300 p-2">{item.length}</td>
-            <td className="border border-gray-300 p-2">{item.description}</td>
-            <td className="border border-gray-300 p-2">{item.quantity}</td>
-          </tr>
-        </React.Fragment>
-      );
-    });
   };
 
   return (
@@ -176,39 +133,39 @@ const XMLParser = () => {
             hover:file:bg-blue-100"
         />
       </div>
-      {summary.length > 0 && (
+      {Object.keys(parsedData).length > 0 && (
         <div>
           <h3 className="text-xl font-bold mb-2">Summary</h3>
           <table className="w-full border-collapse border border-gray-300 mb-8">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border border-gray-300 p-2">Material Type</th>
-                <th className="border border-gray-300 p-2">Length</th>
-                <th className="border border-gray-300 p-2">Description</th>
-                <th className="border border-gray-300 p-2">Quantity</th>
+                <th className="border border-gray-300 p-2">Total Studs</th>
+                <th className="border border-gray-300 p-2">Total Kings</th>
+                <th className="border border-gray-300 p-2">Total Headers (3-3-0)</th>
+                <th className="border border-gray-300 p-2">Total Jacks (6-9-6)</th>
               </tr>
             </thead>
             <tbody>
-              {renderSummary()}
+              <tr>
+                <td className="border border-gray-300 p-2">{summary.totalStuds}</td>
+                <td className="border border-gray-300 p-2">{summary.totalKings}</td>
+                <td className="border border-gray-300 p-2">{summary.totalHeaders330}</td>
+                <td className="border border-gray-300 p-2">{summary.totalJacks696}</td>
+              </tr>
             </tbody>
           </table>
-        </div>
-      )}
-      {Object.entries(parsedData).map(([jobNumber, jobData]) => (
-        <div key={jobNumber} className="mb-8">
-          <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
-          {Object.entries(jobData).map(([fileName, fileData]) => (
-            <div key={fileName} className="mb-4">
-              <h4 className="text-lg font-semibold mb-2">
-                File: {fileName} {getStudSummary(fileData)}
-              </h4>
-              {/* ... (resto del código para la tabla se mantiene igual) */}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-export default XMLParser;
+          {Object.entries(parsedData).map(([jobNumber, jobData]) => (
+            <div key={jobNumber} className="mb-8">
+              <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
+              {Object.entries(jobData).map(([fileName, fileData]) => (
+                <div key={fileName} className="mb-4">
+                  <h4 className="text-lg font-semibold mb-2">
+                    File: {fileName} {getStudSummary(fileData)}
+                  </h4>
+                  <table className="w-full border-collapse border border-gray-300">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="border border-gray-300 p-2">Type</th>
+                        <th className="border border-gray-300 p-2">Length (ft-in-16ths)</th>
+                        <th className="border border-gray-300 p-2">Count</th>
+                        <th className="border border-gray-300 p-</antArtifact>
