@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 
-const XMLParser = () => {
+const StudAnalyzer = () => {
   const [parsedData, setParsedData] = useState({});
-  const [summary, setSummary] = useState([]);
+  const [studSummary, setStudSummary] = useState({});
 
-  const parseXML = (xmlString, fileName, jobNumber) => {
+  const parseXML = (xmlString) => {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlString, "text/xml");
     const memberDataElements = xmlDoc.getElementsByTagName("MEMBER_DATA");
@@ -17,9 +18,9 @@ const XMLParser = () => {
         length: parseFloat(member.getElementsByTagName("LENGTH")[0]?.textContent || '0'),
         units: member.getElementsByTagName("LENGTH")[0]?.getAttribute("UNITS") || ''
       }))
-      .filter(item => !item.type.toLowerCase().includes('plate') && !item.description.toLowerCase().includes('plate'));
+      .filter(item => item.type.toLowerCase() === 'stud');
 
-    return groupAndSortData(extractedData);
+    return groupAndAnalyzeStuds(extractedData);
   };
 
   const convertLength = (inches) => {
@@ -32,70 +33,64 @@ const XMLParser = () => {
     return `${feet}-${wholeInches}-${sixteenths}`;
   };
 
-  const groupAndSortData = (data) => {
-    const typeOrder = ['STUD', 'KING', 'JACK', 'HEADER'];
+  const determineStudType = (description) => {
+    if (description.toLowerCase().includes('2x4')) return '2x4';
+    if (description.toLowerCase().includes('2x6')) return '2x6';
+    return 'other';
+  };
+
+  const groupAndAnalyzeStuds = (data) => {
     const grouped = data.reduce((acc, item) => {
-      const key = `${item.type}-${item.length}`;
-      if (!acc[key]) {
-        acc[key] = { ...item, count: 0, convertedLength: convertLength(item.length) };
+      const studType = determineStudType(item.description);
+      const lengthKey = convertLength(item.length);
+      const groupKey = `${studType}-${lengthKey}`;
+      
+      if (!acc[groupKey]) {
+        acc[groupKey] = {
+          studType,
+          length: lengthKey,
+          count: 0,
+          description: item.description
+        };
       }
-      acc[key].count++;
+      acc[groupKey].count++;
       return acc;
     }, {});
 
-    return Object.values(grouped).sort((a, b) => {
-      const typeOrderA = typeOrder.indexOf(a.type.toUpperCase());
-      const typeOrderB = typeOrder.indexOf(b.type.toUpperCase());
-      if (typeOrderA !== typeOrderB) {
-        return typeOrderA - typeOrderB;
+    // Calcular totales y bundles
+    const summary = {
+      '2x4': {
+        total: 0,
+        bundles: 0,
+        byLength: {}
+      },
+      '2x6': {
+        total: 0,
+        bundles: 0,
+        byLength: {}
+      },
+      'other': {
+        total: 0,
+        byLength: {}
       }
-      return b.length - a.length;
-    });
-  };
+    };
 
-  const updateSummary = (newParsedData) => {
-    const newSummary = [];
-
-    Object.values(newParsedData).forEach(jobData => {
-      Object.values(jobData).forEach(fileData => {
-        fileData.forEach(item => {
-          if (['STUD', 'KING', 'JACK', 'HEADER'].includes(item.type.toUpperCase())) {
-            const summaryItem = newSummary.find(
-              si => si.materialType === item.type &&
-                    si.length === item.convertedLength &&
-                    si.description === item.description
-            );
-            
-            if (summaryItem) {
-              summaryItem.quantity += item.count;
-            } else {
-              newSummary.push({
-                materialType: item.type,
-                length: item.convertedLength,
-                description: item.description,
-                quantity: item.count
-              });
-            }
-          }
-        });
-      });
-    });
-
-    newSummary.sort((a, b) => {
-      const typeOrder = ['STUD', 'KING', 'JACK', 'HEADER'];
-      const typeOrderA = typeOrder.indexOf(a.materialType.toUpperCase());
-      const typeOrderB = typeOrder.indexOf(b.materialType.toUpperCase());
-      if (typeOrderA !== typeOrderB) {
-        return typeOrderA - typeOrderB;
+    Object.values(grouped).forEach(group => {
+      const { studType, length, count } = group;
+      summary[studType].total += count;
+      
+      if (!summary[studType].byLength[length]) {
+        summary[studType].byLength[length] = 0;
       }
-      const [feetA, inchesA, sixteenthsA] = a.length.split('-').map(Number);
-      const [feetB, inchesB, sixteenthsB] = b.length.split('-').map(Number);
-      const totalInchesA = feetA * 12 + inchesA + sixteenthsA / 16;
-      const totalInchesB = feetB * 12 + inchesB + sixteenthsB / 16;
-      return totalInchesB - totalInchesA;
+      summary[studType].byLength[length] += count;
+
+      if (studType === '2x4') {
+        summary[studType].bundles = (summary[studType].total / 294).toFixed(2);
+      }
     });
 
-    setSummary(newSummary);
+    setStudSummary(summary);
+    return grouped;
   };
 
   const handleFileUpload = async (event) => {
@@ -108,7 +103,7 @@ const XMLParser = () => {
       const fileName = pathParts[pathParts.length - 1];
 
       const content = await file.text();
-      const fileData = parseXML(content, fileName, jobNumber);
+      const fileData = parseXML(content, fileName);
 
       if (!newParsedData[jobNumber]) {
         newParsedData[jobNumber] = {};
@@ -117,116 +112,71 @@ const XMLParser = () => {
     }
 
     setParsedData(newParsedData);
-    updateSummary(newParsedData);
   };
-
-  const renderSummary = () => {
-    let currentType = null;
-    return summary.map((item, index) => {
-      const isNewType = currentType !== item.materialType;
-      if (isNewType) {
-        currentType = item.materialType;
-      }
-      return (
-        <React.Fragment key={index}>
-          {isNewType && index !== 0 && (
-            <tr className="h-4">
-              <td colSpan="4"></td>
-            </tr>
-          )}
-          <tr>
-            <td className="border border-gray-300 p-2">{item.materialType}</td>
-            <td className="border border-gray-300 p-2">{item.length}</td>
-            <td className="border border-gray-300 p-2">{item.description}</td>
-            <td className="border border-gray-300 p-2">{item.quantity}</td>
-          </tr>
-        </React.Fragment>
-      );
-    });
-  };
-
-  const getStudSummary = (fileData) => {
-  const studSummary = fileData
-    .filter(item => item.type.toUpperCase() === 'STUD')
-    .map(stud => {
-      const firstWord = stud.description.split(' ')[0];  // Toma solo la primera palabra de la descripción
-      return `${stud.convertedLength} ${firstWord}`;
-    })
-    .filter((value, index, self) => self.indexOf(value) === index)  // Elimina duplicados
-    .join(', ');
-  return studSummary ? `(${studSummary})` : '';
-};
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Multi-File XML Parser</h2>
-      <div className="mb-4">
-        <input
-          type="file"
-          webkitdirectory="true"
-          directory="true"
-          multiple
-          onChange={handleFileUpload}
-          className="block w-full text-sm text-gray-500
-            file:mr-4 file:py-2 file:px-4
-            file:rounded-full file:border-0
-            file:text-sm file:font-semibold
-            file:bg-blue-50 file:text-blue-700
-            hover:file:bg-blue-100"
-        />
-      </div>
-      {summary.length > 0 && (
-        <div>
-          <h3 className="text-xl font-bold mb-2">Summary</h3>
-          <table className="w-full border-collapse border border-gray-300 mb-8">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border border-gray-300 p-2">Material Type</th>
-                <th className="border border-gray-300 p-2">Length</th>
-                <th className="border border-gray-300 p-2">Description</th>
-                <th className="border border-gray-300 p-2">Quantity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {renderSummary()}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {Object.entries(parsedData).map(([jobNumber, jobData]) => (
-        <div key={jobNumber} className="mb-8">
-          <h3 className="text-xl font-bold mb-2">Job Number: {jobNumber}</h3>
-          {Object.entries(jobData).map(([fileName, fileData]) => (
-            <div key={fileName} className="mb-4">
-              <h4 className="text-lg font-semibold mb-2">
-                File: {fileName} {getStudSummary(fileData)}
-              </h4>
-              <table className="w-full border-collapse border border-gray-300">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-gray-300 p-2">Type</th>
-                    <th className="border border-gray-300 p-2">Length</th>
-                    <th className="border border-gray-300 p-2">Count</th>
-                    <th className="border border-gray-300 p-2">Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fileData.map((item, index) => (
-                    <tr key={index}>
-                      <td className="border border-gray-300 p-2">{item.type}</td>
-                      <td className="border border-gray-300 p-2">{item.convertedLength}</td>
-                      <td className="border border-gray-300 p-2">{item.count}</td>
-                      <td className="border border-gray-300 p-2">{item.description}</td>
-                    </tr>
+      <Card>
+        <CardHeader>
+          <CardTitle>Analizador de Studs</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-4">
+            <input
+              type="file"
+              webkitdirectory="true"
+              directory="true"
+              multiple
+              onChange={handleFileUpload}
+              className="block w-full text-sm text-gray-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-blue-50 file:text-blue-700
+                hover:file:bg-blue-100"
+            />
+          </div>
+
+          {Object.keys(studSummary).length > 0 && (
+            <div className="space-y-6">
+              {/* Resumen 2x4 */}
+              <div className="border rounded-lg p-4">
+                <h3 className="text-lg font-bold mb-2">Studs 2x4</h3>
+                <div className="grid grid-cols-2 gap-4 mb-2">
+                  <div>Total: {studSummary['2x4'].total}</div>
+                  <div>Bundles (÷294): {studSummary['2x4'].bundles}</div>
+                </div>
+                <div className="mt-2">
+                  <h4 className="font-semibold">Por medida:</h4>
+                  {Object.entries(studSummary['2x4'].byLength).map(([length, count]) => (
+                    <div key={length} className="grid grid-cols-2 gap-4">
+                      <div>{length}</div>
+                      <div>{count}</div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
+
+              {/* Resumen 2x6 */}
+              <div className="border rounded-lg p-4">
+                <h3 className="text-lg font-bold mb-2">Studs 2x6</h3>
+                <div className="mb-2">Total: {studSummary['2x6'].total}</div>
+                <div className="mt-2">
+                  <h4 className="font-semibold">Por medida:</h4>
+                  {Object.entries(studSummary['2x6'].byLength).map(([length, count]) => (
+                    <div key={length} className="grid grid-cols-2 gap-4">
+                      <div>{length}</div>
+                      <div>{count}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
-      ))}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
 
-export default XMLParser;
+export default StudAnalyzer;
